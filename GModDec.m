@@ -283,15 +283,15 @@ intrinsic Hash(x::GModDecElt) -> RngIntElt
   {
   Returns the hash value of x.
   }
-  return Hash(<x`elt>);
+  return Hash(<Group(x`parent), x`elt>);
 end intrinsic;
 
+// Is this really needed?
 intrinsic Eltseq(x::GModDecElt) -> SeqEnum
   {
   Returns the sequence of coefficients of x`elt.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  return Eltseq(Vector(x));
 end intrinsic;
 
 intrinsic Vector(x::GModDecElt) -> ModTupFld
@@ -411,6 +411,6 @@ intrinsic '*'(x::GModDecElt, g::GrpElt) -> GModDecElt
   }
   M := Parent(x);
   require g in Group(M): "g is not a member of the group which acts on the module containing x.";
-  // NOT YET IMPLMENTED
-  // return null;
+  // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
+  return CreateElement(M, [* x[i]*(g@GModuleAction(M`irreducibles[i])) : i in [1..#x`elt] *]);
 end intrinsic;
