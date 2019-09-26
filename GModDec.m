@@ -79,7 +79,7 @@ end intrinsic;
 =======  Creating a GModDecs  =======
 
 */
-intrinsic DecomposedGModule(M::ModGrp) -> GModDec
+intrinsic DecomposedGModule(M::ModGrp) -> GModDec, Mtrx
   {
   The GModDec of the magma G-module M.
   }
@@ -94,6 +94,7 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec
     T := RationalCharacterTable(G);
     char := Character(M);
     N`multiplicities := ChangeUniverse(Decomposition(T, char), Integers());
+    dec := Decomposition(M);
   else
     dec := Decomposition(M);
     iso_class := {* i where so := exists(i){i : i in [1..#N`irreducibles] | IsIsomorphic(U, N`irreducibles[i])} : U in dec *};
@@ -105,7 +106,11 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec
   N`tensors := [ [] : i in [1..#N`irreducibles]];
   N`symmetric_squares := [];
   
-  return N;
+  S := MultisetToSequence({* i^^N`multiplicities[i] : i in [1..#N`irreducibles]*});
+  CoB := Matrix([ VectorSpace(M) | M!u : u in Basis(U), U in dec])^-1 *
+           DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], N`irreducibles[S[i]]) : i in [1..#dec]>);
+  
+  return N, CoB;
 end intrinsic;
 
 intrinsic DecomposedGModule(S::SeqEnum[Mtrx]) -> GModDec
