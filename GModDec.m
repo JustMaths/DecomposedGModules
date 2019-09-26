@@ -68,13 +68,6 @@ intrinsic Dimension(M::GModDec) -> RngIntElt
   return &+[ M`multiplicities[i]*Dimension(M`irreducibles[i]) : i in [1..#M`multiplicities] | M`multiplicities[i] ne 0];
 end intrinsic;
 
-intrinsic BaseField(M::GModDec) -> Fld
-  {
-  Base field of the module.
-  }
-  return BaseField(M`irreducibles[1]);
-end intrinsic;
-
 intrinsic BaseRing(M::GModDec) -> Rng
   {
   Base ring of the module.
@@ -86,12 +79,33 @@ end intrinsic;
 =======  Creating a GModDecs  =======
 
 */
-intrinsic DecomposedGModule(M::Gmod) -> GModDec
+intrinsic DecomposedGModule(M::ModGrp) -> GModDec
   {
   The GModDec of the magma G-module M.
   }
-  // NOT YET IMPLMENTED
-  // return MM;
+  G := Group(M);
+  F := BaseRing(M);
+  
+  N := New(GModDec);
+  N`group := G;
+  N`irreducibles := IrreducibleModules(G, F);
+  
+  if F eq Rationals() then
+    T := RationalCharacterTable(G);
+    char := Character(M);
+    N`multiplicities := ChangeUniverse(Decomposition(T, char), Integers());
+  else
+    dec := Decomposition(M);
+    iso_class := {* i where so := exists(i){i : i in [1..#N`irreducibles] | IsIsomorphic(U, N`irreducibles[i])} : U in dec *};
+    N`multiplicities := ChangeUniverse([ Multiplicity(iso_class, i) : i in [1..#N`irreducibles]], Integers());
+  end if;
+    
+  N`subspaces := [ VectorSpace(F, d) : d in N`multiplicities ];
+
+  N`tensors := [ [] : i in [1..#N`irreducibles]];
+  N`symmetric_squares := [];
+  
+  return N;
 end intrinsic;
 
 intrinsic DecomposedGModule(S::SeqEnum[Mtrx]) -> GModDec
@@ -118,7 +132,7 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   
-  Mnew`subspaces := [ sub< M`subspaces[i] | [ Rows(Transpose(x`elt[i])) : x in XX]> : i in [1..Dimension(M)]];
+  Mnew`subspaces := [ sub< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
   return Mnew;
@@ -136,7 +150,7 @@ intrinsic QuoConstructor(M::GModDec, X::.) -> GModDec, SeqEnum[Map]
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   
-  quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | [ Rows(Transpose(x`elt[i])) : x in XX]> : i in [1..Dimension(M)]];
+  quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
   
   Mnew`subspaces := [ t[1] : t in quos];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -144,15 +158,36 @@ intrinsic QuoConstructor(M::GModDec, X::.) -> GModDec, SeqEnum[Map]
   return Mnew, [ t[2] : t in quos];
 end intrinsic;
 
+/*
+
+Given a sequence Q of sequences, produce the merged version.
+Will be used for tensor and symmetric_square attributes
+
+NB elements in the sequence may be undefined, but where they are defined, they must agree.
+
+*/
+function Merge(Q)
+  L := [];
+  for i in [1..Maximum([#S : S in Q])] do
+    if exists(S){S : S in Q | IsDefined(S, i)} then
+      L[i] := S[i];
+    end if;
+  end for;
+
+  return L;
+end function;
+
 intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, SeqEnum, SeqEnum, SeqEnum, SeqEnum
   {
   The direct sum of M and N, the two inclusion maps and the two projection maps.
   }
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the smae field.";
   Mnew := New(GModDec);
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := M`tensors;
-  Mnew`symmetric_squares := M`symmetric_squares;
+  
+  Mnew`tensors := [ Merge([M`tensors[i], N`tensors[i]]) : i in [1..#M`irreducibles]];
+  Mnew`symmetric_squares := Merge([ M`symmetric_squares, N`symmetric_squares]);
   
   sums := [ < V, inj1, inj2, proj1, proj2 > 
       where V, inj1, inj2, proj1, proj2 := DirectSum(M`subspaces[i], N`subspaces[i])
@@ -173,15 +208,17 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   {
   The direct sum of the modules in Q, a sequence of inclusion maps and a sequence of projection maps.
   }
+  require forall{ M : M in Q | Group(M) eq Group(Q[1])} and forall{ M : M in Q | BaseRing(M) eq BaseRing(Q[1])}: "The modules must be for the same group and over the smae field.";
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := M`tensors;
-  Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`group := Q[1]`group;
+  Mnew`irreducibles := Q[1]`irreducibles;
+  
+  Mnew`tensors := [ Merge([M`tensors[i] : M in Q]) : i in [1..#Mnew`irreducibles]];
+  Mnew`symmetric_squares := Merge([ M`symmetric_squares : M in Q]);
   
   sums := [ < V, injs, projs > 
       where V, injs, projs := DirectSum([ M`subspaces[i] : M in Q])
-                   : i in [1..#M`irreducibles]];
+                   : i in [1..#Mnew`irreducibles]];
   
   Mnew`subspaces := [ t[1] : t in sums ];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -332,12 +369,11 @@ end intrinsic;
 =======  Translating between different structures  =======
 
 */
-intrinsic GModule(M::GModDec) -> GMod
+intrinsic GModule(M::GModDec) -> ModGrp
   {
   The magma G-module given by M.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  return DirectSum(Flat([ [ M`irreducibles[i] : j in [1..M`multiplicities[i]]] : i in [1..#M`irreducibles]]));
 end intrinsic;
 
 intrinsic VectorSpace(M::GModDec) -> ModTupRng
@@ -392,14 +428,14 @@ intrinsic Eltseq(x::GModDecElt) -> SeqEnum
   {
   Returns the sequence of coefficients of x`elt.
   }
-  return &cat[ RowSequence(x`elt[i]) : i in [1..#x`elt]];
+  return Flat([ RowSequence(x`elt[i]) : i in [1..#x`elt]]);
 end intrinsic;
 
 intrinsic Vector(x::GModDecElt) -> ModTupFld
   {
   Returns the vector.
   }
-  return Vector(&cat[ RowSequence(x`elt[i]) : i in [1..#x`elt]]);
+  return Vector(Flat([ RowSequence(x`elt[i]) : i in [1..#x`elt]]));
 end intrinsic;
 
 intrinsic IsZero(x::GModDecElt) -> BoolElt
@@ -427,13 +463,13 @@ intrinsic IsCoercible(M::GModDec, x::.) -> BoolElt, GModDecElt
    then
     return true, CreateElement(M, x);
   elif (Type(x) eq SeqEnum and #x eq Dimension(M)) or
-     (Type(x) eq MudTupFldElt and Degree(x) eq Dimension(M)) then
+     (Type(x) eq ModTupFldElt and Degree(x) eq Dimension(M)) then
     seq := Partition([1..Dimension(M)], [ M`multiplicities[i]*Dimension(M`irreducibles[i]) : i in [1..#M`multiplicities]]);
     xx := [* Matrix(BaseRing(M), M`multiplicities[i], Dimension(M`irreducibles[i]), x[seq[i]]) : i in [1..#seq]*];
     return true, CreateElement(M, xx);
   // COMPLETE SOME MORE CASES
   else
-    return false, _;
+    return false, "Illegal coercion.";
   end if;
 end intrinsic;
 
