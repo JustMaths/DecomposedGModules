@@ -282,7 +282,7 @@ function GetTensor(M, i, j)
 end function;
 
 function GetS2(M, i)
-  if Type(M`symmetric_squares[i]) then
+  if Type(M`symmetric_squares[i]) eq BoolElt then
     S2 := SymmetricSquare(M`irreducibles[i]);
   
     if BaseRing(M) eq Rationals() then
@@ -402,20 +402,104 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
           map[offset_i+k,offset_j+l] := vects[dims[jj]*(k-1) + l];
         end for;
       end for;
-      offset_j +:= dims[jj];    
+      offset_j +:= dims[jj];
     end for;
     offset_i +:= dims[ii];
   end for;
   
   return Mnew, map;
 end intrinsic;
+/*
+
+Gives the index into the symmetric square of a module of dimension n
+
+*/
+ijpos := function(i,j,n)
+  if i le j then
+    return &+[ n+1 -k : k in [0..i-1]] -n +j-i;
+  else
+    return &+[ n+1 -k : k in [0..j-1]] -n +i-j;
+  end if;
+end function;
 
 intrinsic SymmetricSquare(M::GModDec) -> GModDec
   {
   The symmetric square of M.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  no_const := #M`irreducibles;
+  
+  // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
+  irreds_M := MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*});
+  
+  poss := [[] : i in [1..#irreds_M]];
+  last := [0 : i in [1..no_const]];
+  for i in [1..#irreds_M] do
+    ii := irreds_M[i];
+    for j in [i..#irreds_M] do
+      if i eq j then
+        S := GetS2(M, ii);
+      else
+        jj := irreds_M[j];
+        S := GetTensor(M, ii, jj);
+      end if;
+      next := [ last[k]+S[k] : k in [1..no_const]];
+      poss[i,j] := [ [last[k]+1..next[k]] : k in [1..no_const]];
+      last := next;
+    end for;
+  end for;
+  
+  Mnew := New(GModDec);
+  Mnew`group := M`group;
+  Mnew`irreducibles := M`irreducibles;
+  
+  Mnew`tensors := M`tensors;
+  Mnew`symmetric_squares := M`symmetric_squares;
+  
+  mult := next;
+  Mnew`multiplicities := mult;
+  Mnew`subspaces := [ VectorSpace(BaseRing(M), d) : d in Mnew`multiplicities ];
+  
+  // We want to give a `matrix' for the product, so the i,jth entry is the tensor m_i \otimes n_j
+  
+  dims := [ Dimension(U) : U in Mnew`irreducibles];
+  
+  map := [ [] : i in [1..Dimension(M)]];
+  
+  offset_i := 0;
+  for i in [1..#irreds_M] do
+    ii := irreds_M[i];
+    offset_j := offset_i;
+    for j in [i..#irreds_M] do
+      if i eq j then
+        jj := ii;
+        S, iso := GetS2(M, ii);
+        
+        vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+      
+        for k in [1..dims[ii]] do
+          for l in [k..dims[ii]] do
+            map[offset_i+k,offset_j+l] := vects[ijpos(k,l,dims[ii])];
+          end for;
+        end for;
+        
+      else
+        jj := irreds_M[j];
+        S, iso := GetTensor(M, ii, jj);
+     
+        vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+        
+        for k in [1..dims[ii]] do
+          for l in [1..dims[jj]] do
+            map[offset_i+k,offset_j+l] := vects[dims[jj]*(k-1) + l];
+          end for;
+        end for;
+      end if;
+      offset_j +:= dims[jj];
+    end for;
+    offset_i +:= dims[ii];
+  end for;
+  
+  return Mnew, Flat([ map[i][i..Dimension(M)] : i in [1..Dimension(M)]]);
 end intrinsic;
 
 intrinsic Restriction(M::GModDec, H::Grp) -> GModDec
