@@ -33,8 +33,8 @@ declare attributes GModDec:
   irreducibles,       // A SeqEnum of all the irreducibles for the group G
   multiplicities,     // A SeqEnum of the multiplicities of each irreducible
   subspaces,          // A SeqEnum of vector spaces of the corresponding multiplicity
-  tensors,            // ?? A SeqEnum of SeqEnums of the tensor products of the irreducibles
-  symmetric_squares;  // ?? A SeqEnum of the symmetric squares of the irreducibles
+  tensors,            // ?? A List of Lists of the tensor products of the irreducibles
+  symmetric_squares;  // ?? A List of the symmetric squares of the irreducibles
 
 // NB Not sure quite how to save the info for tensors and symmetric_squares yet.  Need both a seq of multiplicities for each and the maps mapping the tensor to our representation of it.
   
@@ -74,12 +74,19 @@ intrinsic BaseRing(M::GModDec) -> Rng
   }
   return BaseRing(M`irreducibles[1]);
 end intrinsic;
+
+intrinsic ConstituentSupport(M::GModDec) -> SeqEnum
+  {
+  The indices of the irreducibles which M is supported on.
+  }
+  return [ i : i in [1..#M`irredicubles] | M`multiplicities[i] ne 0];
+end intrinsic;
 /*
 
 =======  Creating a GModDecs  =======
 
 */
-intrinsic DecomposedGModule(M::ModGrp) -> GModDec, Mtrx
+intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
   {
   The GModDec of the magma G-module M.
   }
@@ -95,6 +102,8 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, Mtrx
     char := Character(M);
     N`multiplicities := ChangeUniverse(Decomposition(T, char), Integers());
     dec := Decomposition(M);
+    // NB the decomposition may not be in order of T
+    Sort(~dec, func<A,B | Position(T,Character(A)) - Position(T, Character(B))>);
   else
     dec := Decomposition(M);
     iso_class := {* i where so := exists(i){i : i in [1..#N`irreducibles] | IsIsomorphic(U, N`irreducibles[i])} : U in dec *};
@@ -103,8 +112,8 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, Mtrx
     
   N`subspaces := [ VectorSpace(F, d) : d in N`multiplicities ];
 
-  N`tensors := [ [] : i in [1..#N`irreducibles]];
-  N`symmetric_squares := [];
+  N`tensors := [* [* false : j in [1..#N`irreducibles]*] : i in [1..#N`irreducibles]*];
+  N`symmetric_squares := [* false : i in [1..#N`irreducibles]*];
   
   S := MultisetToSequence({* i^^N`multiplicities[i] : i in [1..#N`irreducibles]*});
   CoB := Matrix([ VectorSpace(M) | M!u : u in Basis(U), U in dec])^-1 *
@@ -165,17 +174,19 @@ end intrinsic;
 
 /*
 
-Given a sequence Q of sequences, produce the merged version.
+Given a List Q of Lists, produce the merged version.
 Will be used for tensor and symmetric_square attributes
 
-NB elements in the sequence may be undefined, but where they are defined, they must agree.
+NB elements in the List may be undefined (given by false), but where they are defined, they must agree.
 
 */
 function Merge(Q)
-  L := [];
+  L := [* *];
   for i in [1..Maximum([#S : S in Q])] do
-    if exists(S){S : S in Q | IsDefined(S, i)} then
+    if exists(S){S : S in Q | Type(S) ne BoolElt} then
       L[i] := S[i];
+    else
+      L[i] := false;
     end if;
   end for;
 
@@ -186,13 +197,13 @@ intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, SeqEnum, SeqEnum, SeqEnu
   {
   The direct sum of M and N, the two inclusion maps and the two projection maps.
   }
-  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the smae field.";
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the same field.";
   Mnew := New(GModDec);
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
   
-  Mnew`tensors := [ Merge([M`tensors[i], N`tensors[i]]) : i in [1..#M`irreducibles]];
-  Mnew`symmetric_squares := Merge([ M`symmetric_squares, N`symmetric_squares]);
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
   
   sums := [ < V, inj1, inj2, proj1, proj2 > 
       where V, inj1, inj2, proj1, proj2 := DirectSum(M`subspaces[i], N`subspaces[i])
@@ -213,13 +224,13 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   {
   The direct sum of the modules in Q, a sequence of inclusion maps and a sequence of projection maps.
   }
-  require forall{ M : M in Q | Group(M) eq Group(Q[1])} and forall{ M : M in Q | BaseRing(M) eq BaseRing(Q[1])}: "The modules must be for the same group and over the smae field.";
+  require forall{ M : M in Q | Group(M) eq Group(Q[1])} and forall{ M : M in Q | BaseRing(M) eq BaseRing(Q[1])}: "The modules must be for the same group and over the same field.";
   Mnew := New(GModDec);
   Mnew`group := Q[1]`group;
   Mnew`irreducibles := Q[1]`irreducibles;
   
-  Mnew`tensors := [ Merge([M`tensors[i] : M in Q]) : i in [1..#Mnew`irreducibles]];
-  Mnew`symmetric_squares := Merge([ M`symmetric_squares : M in Q]);
+  Mnew`tensors := [* Merge([*M`tensors[i] : M in Q*]) : i in [1..#Mnew`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares : M in Q*]);
   
   sums := [ < V, injs, projs > 
       where V, injs, projs := DirectSum([ M`subspaces[i] : M in Q])
@@ -236,12 +247,167 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   return Mnew, injs, projs;
 end intrinsic;
 
-intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec
+/*
+
+Given a GModDec M, return the tensor product of the ith and jth irreducibles, calculating and caching it if necessary.
+
+Same for symmetric square
+
+*/
+// NB we are only caching the result on M, not N
+function GetTensor(M, i, j)
+  if Type(M`tensors[i,j]) eq BoolElt then
+    UxV := TensorProduct(M`irreducibles[i], M`irreducibles[j]);
+  
+    // I think using characters will be quicker  
+    if BaseRing(M) eq Rationals() then
+      T := RationalCharacterTable(Group(M));
+      char := Character(UxV);
+      S := ChangeUniverse(Decomposition(T, char), Integers());
+      SS := MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*});
+    else
+      dec := Decomposition(UxV);
+      SS := MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *});
+      S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
+    end if;
+    
+    N := DirectSum([ M`irreducibles[i] : i in SS]);
+    so, iso := IsIsomorphic(UxV, N);
+    
+    assert so;
+    M`tensors[i,j] := <S, iso>;
+  end if;
+  
+  return M`tensors[i,j,1], M`tensors[i,j,2];
+end function;
+
+function GetS2(M, i)
+  if Type(M`symmetric_squares[i]) then
+    S2 := SymmetricSquare(M`irreducibles[i]);
+  
+    if BaseRing(M) eq Rationals() then
+      T := RationalCharacterTable(Group(M));
+      char := Character(S2);
+      S := ChangeUniverse(Decomposition(T, char), Integers());
+      SS := MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*});
+    else
+      dec := Decomposition(S2);
+      SS := MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *});
+      S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
+    end if;
+    
+    N := DirectSum([ M`irreducibles[i] : i in SS]);
+    so, iso := IsIsomorphic(S2, N);
+    
+    assert so;
+    M`symmetric_squares[i] := <S, iso>;
+  end if;
+
+  return M`symmetric_squares[i,1], M`symmetric_squares[i,2];
+end function;
+
+/*
+
+Given two irreducibles U, V, we have already calculated their tensor UxV and an isomorphism iso onto our copy of this which is isomorphic to a direct sum of the contituents of UxV in order.
+
+Suppose that we are doing the tensor of M and N where U \subset M and V subset N.  Then, MxN has the constituents of UxV in some order.
+
+This function gives the image of UxV in our copy of MxN, where S is the list of mulitplicities of irreducibles in UxV and pos is a sequence of sequences [ T_1,..., T_n] where T_k describes the positions in MxN of the kth irreducible in UxV and mult is the multiplicites of the irreducibles in MxN and dims the dimensions of the irreducibles.
+
+*/
+function TensorConvert(iso, S, pos, dims, mult)
+  // We find how to chop up the images in iso to map onto the homogeneuos components.
+  dim := NumberOfRows(iso);
+  hompos := [ S[i]*dims[i] : i in [1..#S] | S[i] ne 0];
+  breakpoints := [ i eq 1 select 0 else Self(i-1)+ hompos[i-1]: i in [1..#hompos+1]];
+  
+  isoparts := [* ColumnSubmatrixRange(iso, breakpoints[i]+1, breakpoints[i+1]) : i in [1..#breakpoints-1]*];
+  
+  // Using pos, we find the size of the zero blocks which we need to insert.
+  zerodims := [];
+  num := 0;
+  for i in [1..#S] do
+    if pos[i] eq [] then
+      // There are no ith irreducibles in the tensor
+      num +:= mult[i]*dims[i];
+    else
+      num +:= (pos[i,1]-1)*dims[i];
+      Append(~zerodims, num);
+      num := (mult[i]-pos[i,#pos[i]])*dims[i];
+    end if;
+  end for;
+  // Now we must app the last one as well
+  Append(~zerodims, num);
+  
+  assert &+zerodims + dim eq &+[mult[i]*dims[i] : i in [1..#mult]];
+  assert #zerodims eq #isoparts+1;
+  
+  F := BaseRing(iso);
+  return HorizontalJoin(< IsOdd(i) select ZeroMatrix(F, dim, zerodims[(i+1) div 2]) else isoparts[i div 2] : i in [1..2*#isoparts+1]>);
+end function;
+
+intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
   {
   The tensor product of M and N.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the same field.";
+  no_const := #M`irreducibles;
+  
+  // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
+  irreds_M := MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*});
+  irreds_N := MultisetToSequence({* i^^N`multiplicities[i] : i in [1..no_const]*});
+  
+  poss := [[] : i in [1..#irreds_M]];
+  last := [0 : i in [1..no_const]];
+  for i in [1..#irreds_M] do
+    ii := irreds_M[i];
+    for j in [1..#irreds_N] do
+      jj := irreds_N[j];
+      S := GetTensor(M, ii, jj);
+      next := [ last[k]+S[k] : k in [1..no_const]];
+      poss[i,j] := [ [last[k]+1..next[k]] : k in [1..no_const]];
+      last := next;
+    end for;
+  end for;
+  
+  Mnew := New(GModDec);
+  Mnew`group := M`group;
+  Mnew`irreducibles := M`irreducibles;
+  
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..no_const]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  
+  mult := next;
+  Mnew`multiplicities := mult;
+  Mnew`subspaces := [ VectorSpace(BaseRing(M), d) : d in Mnew`multiplicities ];
+  
+  // We want to give a `matrix' for the product, so the i,jth entry is the tensor m_i \otimes n_j
+  
+  dims := [ Dimension(U) : U in Mnew`irreducibles];
+  
+  map := [ [] : i in [1..Dimension(M)]];
+  
+  offset_i := 0;
+  for i in [1..#irreds_M] do
+    ii := irreds_M[i];
+    offset_j := 0;
+    for j in [1..#irreds_N] do
+      jj := irreds_N[j];
+      S, iso := GetTensor(M, ii, jj);
+      
+      vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+      
+      for k in [1..dims[ii]] do
+        for l in [1..dims[jj]] do
+          map[offset_i+k,offset_j+l] := vects[dims[jj]*(k-1) + l];
+        end for;
+      end for;
+      offset_j +:= dims[jj];    
+    end for;
+    offset_i +:= dims[ii];
+  end for;
+  
+  return Mnew, map;
 end intrinsic;
 
 intrinsic SymmetricSquare(M::GModDec) -> GModDec
@@ -482,23 +648,41 @@ intrinsic Zero(M::GModDec) -> GModDecElt
   {
   Returns the zero element of M.
   }
-  return CreateElement(M, [* Matrix(BaseRing(M), 0, Dimension(U), []) : U in M`irreducibles*]);
+  return CreateElement(M, [* ZeroMatrix(BaseRing(M), M`multiplicities[i], Dimension(M`irreducibles[i])) : i in [1..#M`irreducibles]*]);
 end intrinsic;
 
 intrinsic Basis(M::GModDec) -> SeqEnum
   {
   Basis of the module.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  // Can do this quicker if needed!
+  return [ M.i : i in [1..Dimension(M)]];
 end intrinsic;
 
 intrinsic '.'(M::GModDec, i::RngIntElt) -> GModDecElt
   {
   The ith basis element of the module.
   }
-  // NOT YET IMPLMENTED
-  // return null;
+  require IsCoercible(Integers(), i) and 1 le i and i le Dimension(M): "This is not a valid index.";
+  dims := [Dimension(M`irreducibles[j]) : j in [1..#M`irreducibles]];
+  homcomps := [ M`multiplicities[j]*dims[j] : j in [1..#M`irreducibles]];
+  pos := [ j eq 1 select homcomps[1] else Self(j-1)+homcomps[j] : j in [1..#M`irreducibles]];
+  
+  j := Minimum({ j : j in [1..#pos] | i le pos[j]});
+  
+  if j eq 1 then
+    offset := 0;
+  else
+    offset := pos[j-1];
+  end if;
+  
+  ii := i-offset;
+  ipos := (ii-1) div dims[j];
+  jpos := ii-ipos*dims[j];
+  x := Zero(M);
+  x`elt[j][ipos+1,jpos] := 1;
+  
+  return x;
 end intrinsic;
 /*
 
@@ -558,5 +742,5 @@ intrinsic '*'(x::GModDecElt, g::GrpElt) -> GModDecElt
   M := Parent(x);
   require g in Group(M): "g is not a member of the group which acts on the module containing x.";
   // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
-  return CreateElement(M, [* x[i]*(g@GModuleAction(M`irreducibles[i])) : i in [1..#x`elt] *]);
+  return CreateElement(M, [* x`elt[i]*(g@GModuleAction(M`irreducibles[i])) : i in [1..#x`elt] *]);
 end intrinsic;
