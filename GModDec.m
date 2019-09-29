@@ -228,7 +228,7 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   }
   require #Q ne 0: "The sequence of Gmodules for the direct sum is empty.";
   F := BaseRing(Q[1]);
-    
+  
   require forall{ M : M in Q | Group(M) eq Group(Q[1])} and forall{ M : M in Q | BaseRing(M) eq F}: "The modules must be for the same group and over the same field.";
   Mnew := New(GModDec);
   Mnew`group := Q[1]`group;
@@ -244,8 +244,8 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   Mnew`subspaces := [ t[1] : t in sums ];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
-  injs := [ DiagonalJoin(< Dimension(Image(t[2,i])) eq 0 select ZeroMatrix(F, 0, Dimension(Codomain(t[2,i]))) else MapToMatrix(t[2,i]) : t in sums>) : i in [1..#Q]];
-  projs := [ DiagonalJoin(< Dimension(Image(t[3,i])) eq 0 select ZeroMatrix(F, Dimension(Domain(t[2,i])), 0) else MapToMatrix(t[3,i]) : t in sums>) : i in [1..#Q]];
+  injs := [ [t[2,i] : t in sums] : i in [1..#Q]];
+  projs := [ [t[3,i] : t in sums] : i in [1..#Q]];
   // Don't know how to form maps between objects of our new type
   // Can magma even do this???
   // For now, we return a sequence of matrices.  Should really turn them back to maps to match ModGrp and MudTupFld, but we will use matrices anyway.
