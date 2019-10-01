@@ -336,10 +336,10 @@ function GetTensor(M, i, j)
       T := RationalCharacterTable(Group(M));
       char := Character(UxV);
       S := ChangeUniverse(Decomposition(T, char), Integers());
-      SS := MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*});
+      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*}));
     else
       dec := Decomposition(UxV);
-      SS := MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *});
+      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *}));
       S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
     end if;
     
@@ -361,10 +361,10 @@ function GetS2(M, i)
       T := RationalCharacterTable(Group(M));
       char := Character(S2);
       S := ChangeUniverse(Decomposition(T, char), Integers());
-      SS := MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*});
+      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*}));
     else
       dec := Decomposition(S2);
-      SS := MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *});
+      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *}));
       S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
     end if;
     
@@ -431,8 +431,8 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
   no_const := #M`irreducibles;
   
   // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
-  irreds_M := MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*});
-  irreds_N := MultisetToSequence({* i^^N`multiplicities[i] : i in [1..no_const]*});
+  irreds_M := Sort(MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*}));
+  irreds_N := Sort(MultisetToSequence({* i^^N`multiplicities[i] : i in [1..no_const]*}));
   
   poss := [[] : i in [1..#irreds_M]];
   last := [0 : i in [1..no_const]];
@@ -510,7 +510,7 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, SeqEnum
   no_const := #M`irreducibles;
   
   // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
-  irreds_M := MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*});
+  irreds_M := Sort(MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*}));
   
   poss := [[] : i in [1..#irreds_M]];
   last := [0 : i in [1..no_const]];
