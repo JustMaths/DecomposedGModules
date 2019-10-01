@@ -9,4 +9,6 @@
   json.m
   ParAxlAlg_json.m
   Properties.m
+  WIP.m
+  GModDec.m
 }
