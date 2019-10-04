@@ -14,6 +14,7 @@ declare attributes ParAxlAlg:
   Miyamoto_group, // The Miyamoto group
   W,              // A vectorspace on which partial multiplication can be defined
   Wmod,           // A G-module representing the same vector space
+  W_to_Wmod,      // A matrix giving the change of basis from W to Wmod
   V,              // A vectorspace on which we know how to multiply
   mult,           // SeqEnum Multiplication table for V whose entries are ModTupFldElts
   GSet,           // The GSet of the axes
@@ -675,7 +676,11 @@ intrinsic '*'(x::ParAxlAlgElt, g::GrpPermElt) -> ParAxlAlgElt
   }
   A := Parent(x);
   require g in Group(A`Wmod): "g is not a member of the group which acts on the partial axial algebra which contains x.";
-  return CreateElement(A, ((A`Wmod)!(x`elt))*g);
+  if Type(A`Wmod) eq ModGrp then
+    return CreateElement(A, (A`Wmod!(x`elt))*g);
+  else
+    return CreateElement(A, Vector((A`Wmod!(x`elt*A`W_to_Wmod))*g)*A`W_to_Wmod^-1);
+  end if;
 end intrinsic;
 /*
 

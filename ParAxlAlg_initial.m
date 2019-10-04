@@ -81,9 +81,9 @@ intrinsic PartialAxialAlgebra(Ax::GSetIndx, tau::Map, shape::SeqEnum: fusion_tab
   ReduceGenerators(~Miy);
   A`Miyamoto_group := Miy;
 
-  A`Wmod := PermutationModule(G, Action(G, Ax), field);
-  A`W := RSpace(field, Dimension(A`Wmod));
-  Wmod := A`Wmod;
+  Wmod, A`W_to_Wmod := DecomposedGModule(PermutationModule(G, Action(G, Ax), field));
+  A`W := RSpace(field, Dimension(Wmod));
+  A`Wmod := Wmod;
   W := A`W;
   A`GSet_to_axes := map<Ax -> W | i :-> W.i>;
 
@@ -128,7 +128,7 @@ intrinsic PartialAxialAlgebra(Ax::GSetIndx, tau::Map, shape::SeqEnum: fusion_tab
       
       homg := hom< H -> Group(alg) | [< g, g@homg> : g in FewGenerators(H)]>;
 
-      assert3 forall{ <v,g> : v in Basis(subsp), g in H |
+      assert3 forall(t){ <v,g> : v in Basis(subsp), g in H |
                        ((A!v)*(g))`elt @map eq (alg!(v@map)*(g@homg))`elt };
         
       subalgs`subsps cat:= [* subsp *];
@@ -221,7 +221,7 @@ intrinsic PartialAxialAlgebra(Ax::GSetIndx, tau::Map, shape::SeqEnum: fusion_tab
   
   for i in [1..#A`axes] do
     actionhom := GModuleAction(A`Wmod);
-    Hmat := [ h@actionhom - IdentityMatrix(field, #Ax) : h in A`axes[i]`stab | h ne G!1];
+    Hmat := [ A`W_to_Wmod*(h@actionhom)*A`W_to_Wmod^-1 - IdentityMatrix(field, #Ax) : h in A`axes[i]`stab | h ne G!1];
     
     prods := [ FastMatrix({@ w : w in Basis(A`axes[i]`even[evens])@}, h) : h in Hmat];
     A`axes[i]`even[evens diff {@1@}] +:= sub< W | &join prods >;
@@ -271,7 +271,7 @@ intrinsic AssignAxis(A::ParAxlAlg, Ax::GSet, tau::Map, a::RngIntElt) -> Axis
 
   return idem;
 end intrinsic;
-
+/*
 intrinsic NewGInvariantSubspace(WH::ModGrp, W::ModTupFld, S::.) -> ModTupFld
   {
   Returns the subspace of W spanned by S which is invariant under the action of the group associated to the G-module WH.
@@ -303,34 +303,36 @@ intrinsic NewGInvariantSubspace(WH::ModGrp, W::ModTupFld, S::.) -> ModTupFld
   end if;
   return newU;
 end intrinsic;
-
-intrinsic GInvariantSubspace(WH::ModGrp, W::ModTupFld, S::.) -> ModTupFld
+*/
+intrinsic GInvariantSubspace(A::ParAxlAlg, S::.) -> ModTupFld
   {
-  Returns the subspace of W spanned by S which is invariant under the action of the group associated to the G-module WH.
+  Returns the subspace of A spanned by S which is invariant under the action of the automorphism group of A.
   }
   t := Cputime();
   require Type(S) in {SetIndx, SetEnum, SeqEnum}: "The given elements are not in a set or sequence.";
+  W := A`W;
+  Wmod := A`Wmod;
+  W_to_Wmod := A`W_to_Wmod;
+
   if #S eq 0 then
     return sub<W|>;
   end if;
   if Type(Universe(S)) eq ParAxlAlg then
-    SS := {@ s`elt : s in S @};
-  elif Type(Universe(S)) eq ModTupFld then
-    SS := S;
-  elif Type(Universe(S)) eq ModGrp then
-    SS := S;
+    SS := FastMatrix({@ s`elt : s in S @}, W_to_Wmod);
+  elif Type(Universe(S)) in {ModTupFld, ModGrp} then
+    SS := FastMatrix(S, W_to_Wmod);
   else
     error "S is not a set of vectors or partial axial algebra elements.";
   end if;
-  require forall{ s : s in SS | IsCoercible(WH,s)}: "The set of elements given are not coercible into the given G-module.";
-  U := sub<WH | SS>;
-  UU := sub< W | [W | W!Vector(WH!u) : u in Basis(U)]>;
+  require forall{ s : s in SS | IsCoercible(Wmod,s)}: "The set of elements given are not coercible into the given G-module.";
+  U := sub<Wmod | SS>;
+  UU := sub< W | Rows(Matrix([W | W!Vector(Wmod!u) : u in Basis(U)])*W_to_Wmod^-1)>;
   if Cputime(t) ge 1 then
     vprintf ParAxlAlg, 4: "Time taken for GInvariantSubspace is %o.  Starting number of objects %o, ending dim %o.\n", Cputime(t), #S, Dimension(UU);
   end if;
   return UU;
 end intrinsic;
-
+/*
 intrinsic GInvariantSubspace(WH::GModDec, W::ModTupFld, S::.) -> ModTupFld
   {
   Returns the subspace of W spanned by S which is invariant under the action of the group associated to the G-module WH.
@@ -341,7 +343,7 @@ intrinsic GInvariantSubspace(WH::GModDec, W::ModTupFld, S::.) -> ModTupFld
     return sub<W|>;
   end if;
   if Type(Universe(S)) eq ParAxlAlg then
-    SS := {@ s`elt : s in S @};
+    SS := FastMatrix({@ s`elt : s in S @}, ;
   elif Type(Universe(S)) eq ModTupFld then
     SS := S;
   elif Type(Universe(S)) eq ModGrp then
@@ -357,8 +359,9 @@ intrinsic GInvariantSubspace(WH::GModDec, W::ModTupFld, S::.) -> ModTupFld
   end if;
   return UU;
 end intrinsic;
-
+*/
 // Tests seem to show this is slower for A6 at about 4000 dim
+/*
 intrinsic InduceGInvariantSubspace(Wmod::ModGrp, W::ModTupFld, S::., H::Grp) -> ModTupFld
   {
   Given a collection S which is invariant under the action of the group H, induce to a submodule of Wmod, where H \leq Group(Wmod), and return as a subspace of W.
@@ -394,6 +397,7 @@ intrinsic InduceGInvariantSubspace(Wmod::ModGrp, W::ModTupFld, S::., H::Grp) -> 
   end if;
   return U;
 end intrinsic;
+*/
 //
 // ================ UPDATE A PARTIAL AXIAL ALGEBRA ================
 //
@@ -509,7 +513,7 @@ intrinsic PullbackEigenvaluesAndRelations(A::ParAxlAlg, ~Anew::ParAxlAlg: force_
     time bas := {@ Wnew | u : u in &cat InduceGAction(G, Group(alg)@homg, actionhom, Basis(Kernel(newmap))) @};
     assert sub<Wnew | bas> eq U;
     */
-    U := GInvariantSubspace(Anew`Wmod, Wnew, Basis(Kernel(newmap)));
+    U := GInvariantSubspace(Anew, Basis(Kernel(newmap)));
     Anew`rels join:= {@ Wnew | u : u in Basis(U)@};
     
     Im_sp := Image(newmap);
@@ -565,7 +569,7 @@ intrinsic PullbackEigenvaluesAndRelations(A::ParAxlAlg, ~Anew::ParAxlAlg: force_
         actionhom := GModuleAction(Anew`Wmod);
       end if;
       
-      newvects := [Matrix(eigvects)*pullback_mat*((g^-1)@actionhom)];
+      newvects := [Matrix(eigvects)*pullback_mat*Anew`W_to_Wmod*((g^-1)@actionhom)*Anew`W_to_Wmod^-1];
       
       // Im_sp is a Group(alg)-submodule, so for each eigenspace U, U meet Im_sp is an alg`axes[k]`stab submodule.  So the pullback to A is an alg`axes[k]`stab@homg module.
       
@@ -576,7 +580,7 @@ intrinsic PullbackEigenvaluesAndRelations(A::ParAxlAlg, ~Anew::ParAxlAlg: force_
       // EK = \cup EHg = \cup Eg.
       
       for h in Htrans diff {@ Id(G)@} do
-        Append(~newvects, newvects[1]*(h@actionhom));
+        Append(~newvects, newvects[1]*Anew`W_to_Wmod*(h@actionhom)*Anew`W_to_Wmod^-1);
       end for;
       
       offset := 0;

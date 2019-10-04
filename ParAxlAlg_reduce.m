@@ -133,11 +133,12 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
   W := A`W;
   require U subset W: "The given U is not a subspace of W.";
   Wmod := A`Wmod;
+  W_to_Wmod := A`W_to_Wmod;
   V := A`V;
-  Vmod := sub<Wmod | [ v : v in Basis(V)]>;
+  Vmod := sub<Wmod | Rows(BasisMatrix(V)*W_to_Wmod)>;
   
-  Umod := sub<Wmod| Basis(U)>;
-  Dmod_old := sub<Wmod| Basis(starting meet V)>;
+  Umod := sub<Wmod| Rows(BasisMatrix(U)*W_to_Wmod)>;
+  Dmod_old := sub<Wmod| Rows(BasisMatrix(starting meet V)*W_to_Wmod)>;
   Dmod_new := Umod meet Vmod;
   
   if Dimension(Umod) eq Dimension(U) then
@@ -150,9 +151,9 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
     vprintf ParAxlAlg, 1: "Saturate subspace: Dimension intersection with V is %o\n", Dimension(Dmod_new);
     tt := Cputime();
     // We only do products of V with the new vectors found in D
-    bas_new := ExtendBasis(Dmod_old, Dmod_new)[Dimension(Dmod_old)+1..Dimension(Dmod_new)];
+    basmod_new := ExtendBasis(Dmod_old, Dmod_new)[Dimension(Dmod_old)+1..Dimension(Dmod_new)];
     
-    bas_new := [ W | W!Vector(Wmod!u) : u in bas_new];
+    bas_new := FastMatrix([ W | W!Vector(Wmod!u) : u in basmod_new], W_to_Wmod^-1);
     
     S := IndexedSet(&cat BulkMultiply(A, bas_new, Basis(V)));
     
@@ -160,7 +161,7 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
     Q, phi := quo<Wmod | Umod>;
     phimat := QuoMap(Wmod, Umod);
     phi := hom< W -> VectorSpace(Q) | phimat>;
-    SQ := FastMatrix(S, phimat);
+    SQ := FastMatrix(S, W_to_Wmod*phimat);
     UU := sub<Q | SQ>;
     Usp := sub<VectorSpace(Q) | [ Q | v : v in Basis(UU)]>@@phi;
     Umod := sub< Wmod | [ Wmod | u : u in Basis(Usp)]>;
@@ -174,14 +175,14 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
   // Check whether we started with a saturated U and hence can coerce back quicker.
   if assigned Uorig then
     extras := ExtendBasis(Uorig, Umod)[Dimension(Uorig)+1..Dimension(Umod)];
-    extras := [ W | Vector(Wmod!u) : u in extras];
+    extras := FastMatrix([ W | Vector(Wmod!u) : u in extras], W_to_Wmod^-1);
     U := sub<W | bas cat extras>;
   
     vprintf ParAxlAlg, 4: "Time taken for saturate subspace %o\n", Cputime(t);
     return U;
   end if;
   
-  U := sub<W | [W | W!Vector(Wmod!u) : u in Basis(Umod)]>;
+  U := sub<W | FastMatrix([W | W!Vector(Wmod!u) : u in Basis(Umod)], W_to_Wmod^-1)>;
     
   vprintf ParAxlAlg, 4: "Time taken for saturate subspace %o\n", Cputime(t);
   return U;
@@ -194,6 +195,7 @@ intrinsic ReduceSaturated(A::ParAxlAlg, U::ModTupFld) -> ParAxlAlg, Map
   t := Cputime();
   W := A`W;
   Wmod := A`Wmod;
+  W_to_Wmod := A`W_to_Wmod;
   V := A`V;
 
   Anew := New(ParAxlAlg);
@@ -278,11 +280,18 @@ intrinsic ReduceSaturated(A::ParAxlAlg, U::ModTupFld) -> ParAxlAlg, Map
   // We have grown U as much as possible, so now we form the quotient
   tt := Cputime();
 
-  Anew`Wmod, psi_mod := quo<Wmod | [Wmod | Wmod! u : u in Basis(U)] >;
-  Wnew := VectorSpace(Anew`Wmod);
-  psi_mat := QuoMap(Wmod, [Wmod | Wmod! u : u in Basis(U)]);
-  psi := hom< W -> Wnew | psi_mat >;
+  // For W
+  Wnew, psi := quo<W|U>;
+  psi_mat := Matrix([ w@psi : w in Basis(W)]);
 
+  // For Wmod
+  Umodbas := FastMatrix(Basis(U), W_to_Wmod);
+  Anew`Wmod, psi_mod := quo<Wmod | Umodbas >;
+  psi_mod_mat := QuoMap(Wmod, Umodbas);
+  
+  // Find the induced map Anew`W to Anew`Wmod
+  Anew`W_to_Wmod := Matrix(Basis(Wnew)@@psi)*W_to_Wmod*psi_mod_mat;
+  
   Anew`W := Wnew;
   Anew`V := V @ psi;
   
@@ -493,34 +502,52 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   vprintf ParAxlAlg, 1: "Expanding algebra from %o dimensions.\n", Dimension(A);
   tt := Cputime();
   
-  // Temporary
   if Type(A`Wmod) eq ModGrp then
-    Wmod, CoB := DecomposedGModule(A`Wmod);
-    // Cheat for now and do change of basis to A
-    A := ChangeBasis(A, CoB^-1);
+    // temporary
+    Wmod, W_to_Wmod := DecomposedGModule(A`Wmod);
   else
     Wmod := A`Wmod;
-    CoB := IdentityMatrix(BaseRing(A), Dimension(A));
+    W_to_Wmod := A`W_to_Wmod;
   end if;
   
   G := Group(A);
   W := A`W;
   V := A`V;
   
-  Vmod := sub<Wmod | [A`W| v : v in Basis(V)]>;
+  Vmod := sub<Wmod | Rows(BasisMatrix(A`V)*W_to_Wmod)>;
   Cmod := Complement(Wmod, Vmod);
 
   VCmod, VCmap := TensorProduct(Vmod, Cmod);
   C2mod, C2map := SymmetricSquare(Cmod);
 
   Wmodnew, injs := DirectSum([C2mod, VCmod, Wmod]);
+  
+  // We build the new change of basis map
+  Vmodsp := RSpaceWithBasis([ A`W | Vector(Wmod!v) : v in Basis(Vmod)]);
+  V_to_Vmod := Matrix([ VectorSpace(BaseRing(A), Dimension(V)) | Coordinates(Vmodsp, v) : v in Rows(BasisMatrix(A`V)*W_to_Wmod)]);
 
+  C := sub< A`W | [A`W | v : v in Rows(Matrix([Vector(Wmod!c) : c in Basis(Cmod)])*W_to_Wmod^-1)]>;
+  Cmodsp := RSpaceWithBasis([ A`W | Vector(Wmod!c) : c in Basis(Cmod)]);
+  C_to_Cmod := Matrix([ Coordinates(Cmodsp, c) : c in Rows(BasisMatrix(C)*W_to_Wmod)]);
+
+  if assigned VCmap then
+    VC_to_VCmod := TensorProduct(V_to_Vmod, C_to_Cmod)*Matrix(Flat(VCmap));
+  else
+    VC_to_VCmod := ZeroMatrix(BaseRing(A), 0, 0);
+  end if;
+  C2_to_C2mod := SymmetricSquare(C_to_Cmod)*Matrix(Flat(C2map));
+
+  Wnew_to_Wmodnew := DiagonalJoin(<C2_to_C2mod, VC_to_VCmod, W_to_Wmod>)*VerticalJoin(<injs[1], injs[2], injs[3]>);
+  
   // We build the corresponding vector spaces and maps
   
   Wnew := RSpace(BaseRing(A), Dimension(Wmodnew));
-  C := RSpaceWithBasis([ W | Vector(Wmod!(Cmod.i)) : i in [1..Dimension(Cmod)]]);
   
-  WtoWnew_mat := injs[3];
+  id := IdentityMatrix(BaseRing(W), Dimension(Wnew));
+  C2toWnew_mat := RowSubmatrix(id, 1, Dimension(C2mod));
+  VCtoWnew_mat := RowSubmatrix(id, Dimension(C2mod) + 1, Dimension(VCmod));
+  WtoWnew_mat := RowSubmatrix(id, Dimension(C2mod) + Dimension(VCmod)+1, Dimension(W));
+
   WtoWnew := hom< W -> Wnew | WtoWnew_mat >;
     
   Anew := New(ParAxlAlg);
@@ -538,6 +565,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   Anew`Wmod := Wmodnew;
   Anew`W := Wnew;
   Anew`V := W@WtoWnew;
+  Anew`W_to_Wmod := Wnew_to_Wmodnew;
   vprintf ParAxlAlg, 2: "Expanded to %o dimensions.\n", Dimension(Anew`W);
   vprintf ParAxlAlg, 4: "Time taken to build modules and vector spaces %o.\n", Cputime(tt);
   
@@ -550,31 +578,21 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   basC := Basis(C);
   dimV := #basV;
   dimC := #basC;
-
+  
   prodsV := FastMatrix(BulkMultiply(A, basV), WtoWnew_mat);
   
-  if #basV eq 0 or #basC eq 0 then
-    prodsVC := [Wnew | ];
-  else
-    VCtoWnew_mat := injs[2];
-    prodsVC := FastMatrix(Flat(VCmap), VCtoWnew_mat);
-  end if;
-  
-  C2mult := FastMatrix(C2map, injs[1]);
-  
   mult := [[Wnew | ] : i in [1..Dimension(W)]];
-
-  // We do in order C then V
+  // We do in order, C then V
   for i in [1..Dimension(W)] do
     for j in [1..i] do
       if i le dimC then
         // So we are in S^2(C)
-        mult[i][j] := C2mult[ijpos(i,j,dimC)];
+        mult[i][j] := C2toWnew_mat[ijpos(i,j,dimC)];
       else
         // So the ith vector is in V
         if j le dimC then
           // This is VC
-          mult[i,j] := prodsVC[(i-dimC-1)*dimC + j];
+          mult[i,j] := VCtoWnew_mat[(i-dimC-1)*dimC + j];
         else
           // This is V \otimes V
           mult[i,j] := prodsV[(i-dimC)*(i-1-dimC) div 2 + j-dimC];
@@ -585,10 +603,9 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
       end if;
     end for;
   end for;
-
   // Now we need to change basis
-  basW := Rows(Matrix(basC cat basV)^-1);
-  Anew`mult := BulkMultiply(mult, basW, basW);
+  CV_to_W := Rows(Matrix(basC cat basV)^-1);
+  Anew`mult := BulkMultiply(mult, CV_to_W, CV_to_W);
   
   vprintf ParAxlAlg, 4: "  Time taken to build the multiplication table %o.\n", Cputime(tt);
   
@@ -602,7 +619,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   tt := Cputime();
   // We now build the odd and even parts and do w*h-w
   /*
-  
+  act := GModAction(
   
   
   
@@ -698,7 +715,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
       // precompute the images of all the basis vectors in the basis of bas
       Mbas := Matrix(bas);
       Minv := Mbas^-1;
-      images := [ Mbas*h@Aactionhom*Minv : h in H | h ne H!1];
+      images := [ Mbas*A`W_to_Wmod*(h@Aactionhom)*A`W_to_Wmod^-1*Minv : h in H | h ne H!1];
 
       // All the vectors from W_even have already had the w*h-w trick imposed, so don't need to do these.  We only need to do those given by even_pairs.
 
@@ -798,10 +815,10 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
     vprintf ParAxlAlg, 4: "Total time taken for ExpandSpace (before ImplementRelations) %o\n", Cputime(t);
     Anew, psi := ImplementRelations(Anew);
     vprintf ParAxlAlg, 4: "Total time taken for ExpandSpace (including ImplementRelations) %o\n", Cputime(t);
-    return Anew, hom<W->W | CoB>*WtoWnew*psi;
+    return Anew, WtoWnew*psi;
   else
     vprintf ParAxlAlg, 4: "Total time taken for ExpandSpace %o\n", Cputime(t);
-    return Anew, hom<W->W | CoB>*WtoWnew;
+    return Anew, WtoWnew;
   end if;
 end intrinsic;
 //
@@ -846,7 +863,7 @@ intrinsic ImposeEigenvalues(A::ParAxlAlg: implement:=true) -> ParAxlAlg
   newrels_sub := sub<A`W | newrels>;
   int := newrels_sub meet rels_sub;
   bas := ExtendBasis(int, newrels_sub);
-  U := GInvariantSubspace(A`Wmod, A`W, bas[Dimension(int)+1..#bas]);
+  U := GInvariantSubspace(A, bas[Dimension(int)+1..#bas]);
 
   A`rels join:= {@ W| w : w in Basis(U)@};
 
@@ -901,7 +918,7 @@ intrinsic ForceGrading(A::ParAxlAlg) -> ParAxlAlg
   actionhom := GModuleAction(A`Wmod);
   for i in [1..#A`axes] do
     inv := A`axes[i]`inv;
-    inv_mat := inv @ actionhom;
+    inv_mat := A`W_to_Wmod*(inv @ actionhom)*A`W_to_Wmod^-1;
 
     A`axes[i]`odd[&join Keys(A`axes[i]`odd)] := Eigenspace(inv_mat, -1);
     A`axes[i]`even[&join Keys(A`axes[i]`even)] := Eigenspace(inv_mat, 1);
@@ -1081,7 +1098,7 @@ intrinsic ExpandEven(A::ParAxlAlg: implement:=true, backtrack := false, reductio
   Sort(~keys, func<x,y| #x-#y>);
   
   if #A`rels ne 0 then
-    R := GInvariantSubspace(A`Wmod, A`W, A`rels);
+    R := GInvariantSubspace(A, A`rels);
     for i in [1..#A`axes] do
       A`axes[i]`even[{@@}] +:= R;
     end for;
@@ -1150,7 +1167,7 @@ intrinsic ExpandEven(A::ParAxlAlg: implement:=true, backtrack := false, reductio
         // Check that it has changed
         altered_empties := {j : j in [1..#A`axes] | 
                Dimension(A`axes[j]`even[{@@}]) notin {0, stage_flag[j,stage,1]}};
-        U := GInvariantSubspace(A`Wmod, A`W, 
+        U := GInvariantSubspace(A, 
                &cat[ Basis(A`axes[j]`even[{@@}]) : j in altered_empties]);
         A`rels join:= {@ A`W | v : v in Basis(U) @};
         
@@ -1175,7 +1192,7 @@ intrinsic ExpandEven(A::ParAxlAlg: implement:=true, backtrack := false, reductio
       // Find which empty eigenspaces are not G-invariant
       altered_empties := {j : j in [1..#A`axes] | 
                Dimension(A`axes[j]`even[{@@}]) notin {0, stage_flag[j, 5, 1]}};
-      U := GInvariantSubspace(A`Wmod, A`W, 
+      U := GInvariantSubspace(A, 
                &cat[ Basis(A`axes[j]`even[{@@}]) : j in altered_empties]);
       
       // All the rest are G-invariant, or 0 and so have already been added to rels
