@@ -163,7 +163,7 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
     phi := hom< W -> VectorSpace(Q) | phimat>;
     SQ := FastMatrix(S, W_to_Wmod*phimat);
     UU := sub<Q | SQ>;
-    Usp := sub<VectorSpace(Q) | [ Q | v : v in Basis(UU)]>@@phi;
+    Usp := sub<VectorSpace(Q) | [VectorSpace(Q) | Vector(Q!v) : v in Basis(UU)]>@@phi;
     Umod := sub< Wmod | [ Wmod | u : u in Basis(Usp)]>;
     vprintf ParAxlAlg, 4: "    Time taken for new quotient method %o\n", Cputime(ttt);
     
