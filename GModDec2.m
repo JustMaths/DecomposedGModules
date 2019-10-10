@@ -396,11 +396,11 @@ function GetTensor(M, i, j)
     charpos := [Position(T,Character(U)) : U in inds];
     Sort(~charpos, ~perm);
     inds := PermuteSequence(inds, perm);
-    mat := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(M`irreducibles[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
+    iso := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(M`irreducibles[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
     vprintf GModDec, 4: "Time taken for indecomposables method: %o.\n", Cputime(tt);
     
     //assert so;
-    assert3 forall(err){ <i,g> : g in Generators(Group(UxV)), i in [1..Dimension(UxV)] | N!Eltseq(((UxV.i)*g)*mat) eq (N!Eltseq((UxV.i)*mat))*g};
+    //assert3 forall(err){ <i,g> : g in Generators(Group(UxV)), i in [1..Dimension(UxV)] | N!Eltseq(((UxV.i)*g)*mat) eq (N!Eltseq((UxV.i)*mat))*g};
     
     M`tensors[i,j] := <S, iso>;
   else
