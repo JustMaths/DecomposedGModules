@@ -339,8 +339,21 @@ Same for symmetric square
 // NB we are only caching the result on M, not N
 function GetTensor(M, i, j)
   t := Cputime();
+  
+  if j lt i then
+    // only calculate the isomorphism one way round
+    S, iso := GetTensor(M, j, i);
+    seq := [ [k,l] : k in [1..Dimension(M`irreducibles[i])], l in [1..Dimension(M`irreducibles[j])]];
+    Sort(~seq, ~perm);
+    P := PermutationMatrix(BaseRing(M), perm);
+    
+    isorev := P*iso;
+    return S, isorev;
+  end if;
+  
   if Type(M`tensors[i,j]) eq BoolElt then
     vprint GModDec, 2: "Calculating tensor.";
+    /*
     UxV := TensorProduct(M`irreducibles[i], M`irreducibles[j]);
   
     // I think using characters will be quicker  
@@ -361,7 +374,7 @@ function GetTensor(M, i, j)
     vprintf GModDec, 4: "Time taken for isomorphic method: %o.\n", Cputime(tt);
     
     delete UxV;
-    
+    */
     UxV := TensorProduct(M`irreducibles[i], M`irreducibles[j]);
     // I think using characters will be quicker  
     if BaseRing(M) eq Rationals() then
@@ -386,8 +399,8 @@ function GetTensor(M, i, j)
     mat := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(M`irreducibles[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
     vprintf GModDec, 4: "Time taken for indecomposables method: %o.\n", Cputime(tt);
     
-    assert so;
-    assert forall(err){ <i,g> : g in Generators(Group(UxV)), i in [1..Dimension(UxV)] | N!Eltseq(((UxV.i)*g)*mat) eq (N!Eltseq((UxV.i)*mat))*g};
+    //assert so;
+    assert3 forall(err){ <i,g> : g in Generators(Group(UxV)), i in [1..Dimension(UxV)] | N!Eltseq(((UxV.i)*g)*mat) eq (N!Eltseq((UxV.i)*mat))*g};
     
     M`tensors[i,j] := <S, iso>;
   else
