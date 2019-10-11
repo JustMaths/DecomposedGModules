@@ -539,7 +539,7 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
       jj := irreds_N[j];
       S, iso := GetTensor(M, ii, jj);
       
-      time vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+      vects := TensorConvert(iso, S, poss[i,j], dims, mult);
       
       for k in [1..dims[ii]] do
         for l in [1..dims[jj]] do
@@ -628,7 +628,7 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, SeqEnum
         jj := ii;
         S, iso := GetS2(M, ii);
         
-        time vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+        vects := TensorConvert(iso, S, poss[i,j], dims, mult);
       
         for k in [1..dims[ii]] do
           for l in [k..dims[ii]] do
@@ -640,7 +640,7 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, SeqEnum
         jj := irreds_M[j];
         S, iso := GetTensor(M, ii, jj);
      
-        time vects := TensorConvert(iso, S, poss[i,j], dims, mult);
+        vects := TensorConvert(iso, S, poss[i,j], dims, mult);
         
         for k in [1..dims[ii]] do
           for l in [1..dims[jj]] do
@@ -1025,6 +1025,39 @@ intrinsic '*'(x::GModDecElt, g::GrpElt) -> GModDecElt
   return CreateElement(M, [* x`elt[i]*(g@GModuleAction(M`irreducibles[i])) : i in [1..#x`elt] *]);
 end intrinsic;
 
+intrinsic '*'(X::SeqEnum[GModDecElt], g::GrpElt) -> SeqEnum
+  {
+  The image of the elements of X under the action of g.
+  }
+  if #X eq 0 then
+    return X;
+  end if;
+  
+  M := Parent(X[1]);
+  require g in Group(M): "g is not a member of the group which acts on the module containing elements of X.";
+  // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
+  mats := [* VerticalJoin(<x`elt[i] : x in X>)*(g@GModuleAction(M`irreducibles[i])) : i in [1..#M`irreducibles] *];
+  mults := [ M`multiplicities[i] : i in [1..#M`irreducibles]];
+  
+  return [ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#M`irreducibles]*]) : j in [1..#X]];
+end intrinsic;
+
+intrinsic '*'(X::SetIndx[GModDecElt], g::GrpElt) -> SeqEnum
+  {
+  The image of the elements of X under the action of g.
+  }
+  if #X eq 0 then
+    return X;
+  end if;
+  
+  M := Parent(X[1]);
+  require g in Group(M): "g is not a member of the group which acts on the module containing elements of X.";
+  // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
+  mats := [* VerticalJoin(<X[j]`elt[i] : j in [1..#X]>) *(g@GModuleAction(M`irreducibles[i])) : i in [1..#M`irreducibles] *];
+  mults := [ M`multiplicities[i] : i in [1..#M`irreducibles]];
+  
+  return {@ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#M`irreducibles]*]) : j in [1..#X]@};
+end intrinsic;
 // I have no idea how to define maps for a new class of object!!
 /*
 intrinsic '@'(x::GModDecElt, psi::Map) -> GModDecElt

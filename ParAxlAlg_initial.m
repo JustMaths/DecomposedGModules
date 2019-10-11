@@ -563,29 +563,24 @@ intrinsic PullbackEigenvaluesAndRelations(A::ParAxlAlg, ~Anew::ParAxlAlg: force_
       if #eigvects eq 0 then
         continue s;
       end if;
-      
-      // We pull back the vectors to A, apply g^-1
-      if not assigned actionhom then
-        actionhom := GModuleAction(Anew`Wmod);
-      end if;
-      
-      newvects := [Matrix(eigvects)*pullback_mat*Anew`W_to_Wmod*((g^-1)@actionhom)*Anew`W_to_Wmod^-1];
-      
-      // Im_sp is a Group(alg)-submodule, so for each eigenspace U, U meet Im_sp is an alg`axes[k]`stab submodule.  So the pullback to A is an alg`axes[k]`stab@homg module.
+
+      // We don't want to use GModuleAction      
+      // first pullback our eigenvectors and map to Wmod
+      Wmodvects := Matrix(eigvects)*pullback_mat*Anew`W_to_Wmod;
+      Wmodvects := ChangeUniverse(RowSequence(Wmodvects), Anew`Wmod);
       
       H := (alg`axes[k]`stab@@homg)^(g^-1);
       Htrans := Transversal(Anew`axes[j]`stab, H);
-      // This is the set of right cosets representatives.
-      // E = newvects[1] is an H-submod of eigenvectors, but we should have a K-submod.
-      // EK = \cup EHg = \cup Eg.
       
-      for h in Htrans diff {@ Id(G)@} do
-        Append(~newvects, newvects[1]*Anew`W_to_Wmod*(h@actionhom)*Anew`W_to_Wmod^-1);
-      end for;
+      newvects := [ Wmodvects*(g^-1*h) : h in Htrans];
+      
+      // now we push all of these back to W
+      newvects := Matrix([ Vector(w) : w in newvects[i], i in [1..#newvects]])*Anew`W_to_Wmod^-1;
       
       offset := 0;
       for attr in ["even", "odd"], key in allkeys[attr] do
-        Anew`axes[j]``attr[key] +:= sub<Wnew | &cat [ newvects[l][offset+1.. offset+dims[key]] : l in [1..#newvects]]>;
+        seq := &cat[ [(j-1)*#eigvects + offset+1.. (j-1)*#eigvects + offset+dims[key]] : j in [1..#Htrans]];
+        Anew`axes[j]``attr[key] +:= sub<Wnew | newvects[seq]>;
         offset +:= dims[key];
       end for;
     end for;

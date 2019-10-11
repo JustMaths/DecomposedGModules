@@ -280,9 +280,11 @@ intrinsic ReduceSaturated(A::ParAxlAlg, U::ModTupFld) -> ParAxlAlg, Map
   // We have grown U as much as possible, so now we form the quotient
   tt := Cputime();
 
-  // For W
-  Wnew, psi := quo<W|U>;
-  psi_mat := Matrix([ w@psi : w in Basis(W)]);
+  // To get the matrix quickly, we go through this silly workaround to use a reduced form module rather than a vectorspace.
+  Wnew, psi := quo<KModule(BaseRing(A), Dimension(A))|U>;
+  Wnew := VectorSpace(Wnew);
+  psi_mat := MapToMatrix(psi);
+  psi := hom< W-> Wnew | psi_mat>;
 
   // For Wmod
   Umodbas := FastMatrix(Basis(U), W_to_Wmod);
@@ -290,7 +292,13 @@ intrinsic ReduceSaturated(A::ParAxlAlg, U::ModTupFld) -> ParAxlAlg, Map
   psi_mod_mat := QuoMap(Wmod, Umodbas);
   
   // Find the induced map Anew`W to Anew`Wmod
-  Anew`W_to_Wmod := Matrix(Basis(Wnew)@@psi)*W_to_Wmod*psi_mod_mat;
+  // instead of taking the pre-image, calculate the Echelon form
+  _, preims := EchelonForm(psi_mat);
+  
+  assert3 forall(err){i : i in [1..Dimension(Wnew)] | Support(preims[i]@psi) eq {i}};
+  preims := RowSubmatrix(preims, Dimension(Wnew));
+  
+  Anew`W_to_Wmod := preims*W_to_Wmod*psi_mod_mat;
   
   Anew`W := Wnew;
   Anew`V := V @ psi;
@@ -618,12 +626,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   vprint ParAxlAlg, 2: "  Updating the odd and even parts.";
   tt := Cputime();
   // We now build the odd and even parts and do w*h-w
-  /*
-  act := GModAction(
-  
-  
-  
-  */
+
   max_size := Max([#S : S in Keys(A`axes[1]`even)]);
   assert exists(evens){S : S in Keys(A`axes[1]`even) | #S eq max_size};
   max_size := Max([#S : S in Keys(A`axes[1]`odd)]);
@@ -708,14 +711,40 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
 
     if stabiliser_action then
       vprint ParAxlAlg, 2: "  Doing the w*h-w trick.";
+      /*
+      // now GModules are quick, try w*h-w the straightforward way
+
+      H := Anew`axes[i]`stab;
+      
+      // precompute the images of all the basis vectors in the basis of bas
+      // We don't want to use GModuleAction
+
+      bas_mat := BasisMatrix(Anew`axes[i]`even[evens])*Anew`W_to_Wmod;
+      basWmod := ChangeUniverse(RowSequence(bas_mat), Anew`Wmod);
+      images := [ basWmod*h : h in H | h ne H!1];
+      
+      // now join these together and push to W
+      images := Matrix([ Vector(w) : w in images[i], i in [1..#images]])*Anew`W_to_Wmod^-1;
+      
+      newvects := images - VerticalJoin(<bas_mat : j in [1..Order(H)-1]>);
+      
+      Anew`axes[i]`even[evens diff {1}] +:= sub<Wnew | newvects>;
+      
+      */
       // We do the w*h-w trick
       H := A`axes[i]`stab;
-      Aactionhom := GModuleAction(A`Wmod);
-          
+      
       // precompute the images of all the basis vectors in the basis of bas
-      Mbas := Matrix(bas);
-      Minv := Mbas^-1;
-      images := [ Mbas*A`W_to_Wmod*(h@Aactionhom)*A`W_to_Wmod^-1*Minv : h in H | h ne H!1];
+      // We don't want to use GModuleAction
+
+      basWmod_mat := Matrix(bas)*A`W_to_Wmod;
+      basWmod := ChangeUniverse(RowSequence(basWmod_mat), A`Wmod);
+      images := [ basWmod*h : h in H | h ne H!1];
+      
+      // now join these together and push to W
+      images := Matrix([ Vector(w) : w in images[i], i in [1..#images]])*basWmod_mat^-1;
+      
+      images := [ RowSubmatrix(images, [(j-1)*#bas+1..j*#bas]) : j in [1..Order(H)-1]];
 
       // All the vectors from W_even have already had the w*h-w trick imposed, so don't need to do these.  We only need to do those given by even_pairs.
 
