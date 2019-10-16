@@ -161,7 +161,11 @@ intrinsic SaturateSubspace(A::ParAxlAlg, U::ModTupRng: starting := sub<A`W|>) ->
     Q, phi := quo<Wmod | Umod>;
     phimat := QuoMap(Wmod, Umod);
     phi := hom< W -> VectorSpace(Q) | phimat>;
-    SQ := FastMatrix(S, W_to_Wmod*phimat);
+    if Dimension(Image(phimat)) ne 0 then
+      SQ := FastMatrix(S, W_to_Wmod*phimat);
+    else // We have killed everything.
+      SQ := [];
+    end if;
     UU := sub<Q | SQ>;
     Usp := sub<VectorSpace(Q) | [VectorSpace(Q) | Vector(Q!v) : v in Basis(UU)]>@@phi;
     Umod := sub< Wmod | [ Wmod | u : u in Basis(Usp)]>;
@@ -207,9 +211,17 @@ intrinsic ReduceSaturated(A::ParAxlAlg, U::ModTupFld) -> ParAxlAlg, Map
   Anew`group := A`group;
   Anew`Miyamoto_group := A`Miyamoto_group;
 
-  // We must check whether the we are quotienting out anything in the subalgebras
-  // If so, then we form the subalgebra quotients, pull back any relations and add them to U
-
+  if Dimension(U) eq Dimension(A) then
+    Wnew, psi := quo<W | W>;
+    Anew`W := Wnew;
+    Anew`Wmod := quo<Wmod | Wmod >;
+    Anew`V := V @ psi;
+    Anew`GSet_to_axes := map<Anew`GSet -> Wnew | [<i, Wnew!0> : i in Anew`GSet]>;
+    
+    vprintf ParAxlAlg, 4: "Time taken for ReduceSaturated %o\n", Cputime(t);
+    return Anew, psi;
+  end if;
+  
   if assigned A`subalgs then
     tt := Cputime();
     // We create new algebras and maps as we might have to change the algebras to quotients.
@@ -737,7 +749,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
       // precompute the images of all the basis vectors in the basis of bas
       // We don't want to use GModuleAction
 
-      basWmod_mat := Matrix(bas)*A`W_to_Wmod;
+      basWmod_mat := Matrix(bas)*W_to_Wmod;
       basWmod := ChangeUniverse(RowSequence(basWmod_mat), A`Wmod);
       images := [ basWmod*h : h in H | h ne H!1];
       
@@ -825,6 +837,13 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
                  : k in [1..#basV], l in [1..#basC]]
          cat [ <prodsC2[l*(l-1) div 2 + k], (alg!basC[k]@map * alg!basC[l]@map)`elt>
                  : k in [1..l], l in [1..#basC]]>;
+    
+    H := Domain(homg);
+    ReduceGenerators(~H);
+    assert2 forall(err){ <v,g> : v in Basis(newsubsp), g in Generators(H) |
+               ((Anew!v)*g)`elt@newmap eq ((alg!(v@newmap))*(g@homg))`elt};
+    
+    assert2 forall(err){<v,w> : v,w in Basis(newsubsp meet Anew`V) | ((Anew!v)*(Anew!w))`elt@newmap eq (alg!(v@newmap)*alg!(w@newmap))`elt};
     
     Append(~subalgs`subsps, newsubsp);
     Append(~subalgs`maps, <newmap, homg, pos>);
