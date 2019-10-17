@@ -324,7 +324,8 @@ intrinsic GInvariantSubspace(A::ParAxlAlg, S::.) -> ModTupFld
   else
     error "S is not a set of vectors or partial axial algebra elements.";
   end if;
-  require forall{ s : s in SS | IsCoercible(Wmod,s)}: "The set of elements given are not coercible into the given G-module.";
+  // Coercion can be a bit expensive
+  // require forall{ s : s in SS | IsCoercible(Wmod,s)}: "The set of elements given are not coercible into the given G-module.";
   U := sub<Wmod | SS>;
   UU := sub< W | Rows(Matrix([W | W!Vector(Wmod!u) : u in Basis(U)])*W_to_Wmod^-1)>;
   if Cputime(t) ge 1 then
