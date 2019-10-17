@@ -524,11 +524,11 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   
   if Type(A`Wmod) eq ModGrp then
     // temporary
-    Wmod, W_to_Wmod := DecomposedGModule(A`Wmod);
-  else
-    Wmod := A`Wmod;
-    W_to_Wmod := A`W_to_Wmod;
+    A`Wmod, A`W_to_Wmod := DecomposedGModule(A`Wmod);
   end if;
+
+  Wmod := A`Wmod;
+  W_to_Wmod := A`W_to_Wmod;
   
   G := Group(A);
   W := A`W;
