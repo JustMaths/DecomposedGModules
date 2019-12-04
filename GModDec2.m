@@ -131,6 +131,9 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
     dec := Decomposition(M);
     iso_class := {* i where so := exists(i){i : i in [1..#N`irreducibles] | IsIsomorphic(U, N`irreducibles[i])} : U in dec *};
     N`multiplicities := ChangeUniverse([ Multiplicity(iso_class, i) : i in [1..#N`irreducibles]], Integers());
+    // NB the decomposition may not be in order of T
+    T := CharacterTable(G);
+    Sort(~dec, func<A,B | Position(T,Character(A)) - Position(T, Character(B))>);
   end if;
   
   abs_irred := [ Dimension(EndomorphismAlgebra(N`irreducibles[i])) eq 1 : i in [1..#N`irreducibles] | N`multiplicities[i] ne 0];
