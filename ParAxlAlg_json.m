@@ -13,12 +13,21 @@ intrinsic MyGroupName(G::GrpPerm) -> MonStgElt
   {
   If GroupName is defined in magma (roughly version 2.21 or above) it returns GroupName, otherwise it returns order_num, where <order, num> is given by IdentifyGroup. A hash is used in place of a colon.
   }
+  // By doing IdentifyGroup and then SmallGroup, we get a canonical iso rep for G
+  // Can only do for group orders up to 1024
   try
-    name := eval("GroupName(G)");
+    ord, num := Explode(IdentifyGroup(G));
+    GG := SmallGroup(ord, num);
+  catch e
+    GG := G;
+  end try;
+
+  try
+    name := eval("GroupName(GG)");
     // magma/linux/something messes up directory names with colons, so need to substitute these...
     name := Join(Split(name, ":"), "#");
   catch e
-    ord, num := Explode(IdentifyGroup(G));
+  ord, num := Explode(IdentifyGroup(G));
     name := Sprintf("%o_%o", ord, num);
   end try;
   return name;
@@ -158,6 +167,10 @@ filename = sys.argv[1]
 print \"/\".join(os.listdir(filename))
 ";
 
+// Added to fix weird problem with the script not running properly on some machines
+// ASCI char 13 (not \r in magma!) is ignored on some computers and causes an error on others.
+ls_script := &cat Split(ls_script, CodeToString(13));
+
 intrinsic ls(dirname::MonStgElt) -> SeqEnum
   {
   ls
@@ -175,6 +188,10 @@ filename = sys.argv[1]
 print os.stat(filename).st_size
 ";
 
+// Added to fix weird problem with the script not running properly on some machines
+// ASCI char 13 (not \r in magma!) is ignored on some computers and causes an error on others.
+size_script := &cat Split(size_script, CodeToString(13));
+
 intrinsic Size(filename::MonStgElt) -> RngIntElt
   {
   Gets the file size.
@@ -191,6 +208,10 @@ filename = sys.argv[1]
 
 print os.path.isdir(filename)
 ";
+
+// Added to fix weird problem with the script not running properly on some machines
+// ASCI char 13 (not \r in magma!) is ignored on some computers and causes an error on others.
+exists_script := &cat Split(exists_script, CodeToString(13));
 
 intrinsic ExistsPath(dirname::MonStgElt) -> BoolElt
   {

@@ -132,7 +132,13 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
     iso_class := {* i where so := exists(i){i : i in [1..#N`irreducibles] | IsIsomorphic(U, N`irreducibles[i])} : U in dec *};
     N`multiplicities := ChangeUniverse([ Multiplicity(iso_class, i) : i in [1..#N`irreducibles]], Integers());
   end if;
-    
+  
+  abs_irred := [ Dimension(EndomorphismAlgebra(N`irreducibles[i])) eq 1 : i in [1..#N`irreducibles] | N`multiplicities[i] ne 0];
+  
+  if false in abs_irred then
+    print "WARNING - one of the irreducibles is not absolutely irreducible.  Any calculations may well be incorrect!";
+  end if;
+  
   N`subspaces := [ VectorSpace(F, d) : d in N`multiplicities ];
 
   N`tensors := [* [* false : j in [1..#N`irreducibles]*] : i in [1..#N`irreducibles]*];
@@ -172,6 +178,19 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   
+  abs_irred := [ Dimension(EndomorphismAlgebra(U)) eq 1 : U in M`irreducibles];
+  
+  if false in abs_irred then
+    print "WARNING - one of the irreducibles is not absolutely irreducible.  The answer may well be incorrect!";
+  end if;
+  /*
+  // if U is not absolutely irreducible, we must use the old method
+  function GetSubmodule(i, L)
+    N := DirectSum([ M`irreducibles[i] : j in [1..M`multiplicities[i]]]);
+    return sub<N|L>;  
+  end function;
+  */
+  
   if Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
   
     bigmat := Matrix(X);
@@ -185,7 +204,7 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec
     Mnew`subspaces := [ sub< Generic(M`subspaces[i]) | Rows(mats[i])> : i in [1..#M`irreducibles]]; 
   
   else
-    // We have a set/sequecne of GModDecElts or a tuple of a single element
+    // We have a set/sequence of GModDecElts or a tuple of a single element
     XX := { M | x : x in X };
     
     if #XX eq 0 then
@@ -403,13 +422,14 @@ function GetTensor(M, i, j)
       dec := Decomposition(UxV);
       SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *}));
       S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
+      // This assumes that the field is the splitting field for the characters of G
+      T := CharacterTable(Group(M));
     end if;
     
     N := DirectSum([ M`irreducibles[i] : i in SS]);
     
     tt := Cputime();
     inds := IndecomposableSummands(UxV);
-    T := RationalCharacterTable(Group(M));
     charpos := [Position(T,Character(U)) : U in inds];
     Sort(~charpos, ~perm);
     inds := PermuteSequence(inds, perm);

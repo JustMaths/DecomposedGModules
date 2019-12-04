@@ -381,6 +381,15 @@ o = json.load(stdin)
 print(magma(o))
 ";
 
+// Added to fix weird problem with the script not running properly on some machines
+// ASCI char 13 (not \r in magma!) is ignored on some computers and causes an error on others.
+pyscript := &cat Split(pyscript, CodeToString(13));
+
+intrinsic Return_JSON() -> MonStgElt
+  {}
+  return pyscript;
+end intrinsic;
+
 intrinsic ParseJSON(s::MonStgElt) -> Any
   {
   Deserialise a JSON string to an object.
