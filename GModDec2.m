@@ -195,7 +195,10 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec
   */
   
   if Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
-  
+    
+    if Type(X) in {SetEnum, SetIndx} then
+      X := Setseq(X);
+    end if;
     bigmat := Matrix(X);
     
     dims := [ Dimension(U) : U in M`irreducibles];

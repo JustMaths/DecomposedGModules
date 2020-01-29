@@ -527,13 +527,14 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
     A`Wmod, A`W_to_Wmod := DecomposedGModule(A`Wmod);
   end if;
 
-  Wmod := A`Wmod;
-  W_to_Wmod := A`W_to_Wmod;
   
   G := Group(A);
   W := A`W;
+  Wmod := A`Wmod;
+  W_to_Wmod := A`W_to_Wmod;
   V := A`V;
-  
+
+  // We build the modules and maps
   Vmod := sub<Wmod | Rows(BasisMatrix(A`V)*W_to_Wmod)>;
   Cmod := Complement(Wmod, Vmod);
 
@@ -638,7 +639,7 @@ intrinsic ExpandSpace(A::ParAxlAlg: implement := true, stabiliser_action := true
   vprint ParAxlAlg, 2: "  Updating the odd and even parts.";
   tt := Cputime();
   // We now build the odd and even parts and do w*h-w
-
+  
   max_size := Max([#S : S in Keys(A`axes[1]`even)]);
   assert exists(evens){S : S in Keys(A`axes[1]`even) | #S eq max_size};
   max_size := Max([#S : S in Keys(A`axes[1]`odd)]);

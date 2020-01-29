@@ -176,39 +176,36 @@ intrinsic TauAction(Ax::GSet, tau_maps::SetIndx) -> GSet
   phi, GG := Action(G, Ax);
   GAx := Stabiliser(Sym(#Ax), Set(orbs));
   N := Normaliser(GAx, GG);
+  trans := Transversal(N, GG);
   // N is the automorphism group of the action of G on Ax
   
-  // We must define equality of maps
+  // tau-maps are defined by their action on orbit representatives.
   orb_reps := [Representative(o) : o in orbs];
-  MapEq := function(f,g)
-    return forall{i: i in orb_reps | i@f eq i@g};
-  end function;
   
-  // We need to build the entire image as we cannot define a GSet without a domain and codomain for f
-  all_tau_maps := tau_maps;
-  
-  update := procedure(~all_tau_maps, f)
-    so := exists(g){g : g in all_tau_maps | MapEq(f,g)};
-    if not so then
-      // NB Include throws an error here!
-      all_tau_maps join:= {@ f @};
-    end if;
-  end procedure;
-      
-  // The action on tau maps is
-  // tau_n := tau(i^(n^-1))^n
-  
+  // It's just as fast to form the function and then calculate the image of orb_reps as it is to only calculate the images of orb_reps (as tested on orb_rep of size 3)
   act := function(tau, n)
     return map<Ax-> G | i:-> ((((i^(n^-1))@tau)@phi)^n)@@phi >;
   end function;
   
-  for t in tau_maps do
-    for n in N do
-      update(~all_tau_maps, act(t, n));
-    end for;
+  orb_images := {};
+  all_tau_maps := [];
+  
+  // GG acts trivially on each tau, so we just need to check the transversal
+  for t in tau_maps, n in trans do
+    tau := act(t, n);
+    Im_tau := orb_reps@tau;
+    if not Im_tau in orb_images then
+      Include(~orb_images, Im_tau);
+      Append(~all_tau_maps, tau);
+    end if;
   end for;
   
-  // define a lookup into all_tau_maps
+  all_tau_maps := IndexedSet(all_tau_maps);
+  
+  MapEq := function(f,g)
+    return forall{i: i in orb_reps | i@f eq i@g};
+  end function;
+  
   tau_return := function(f)
     assert exists(g){g : g in all_tau_maps | MapEq(f,g)};
     return g;
@@ -455,7 +452,7 @@ intrinsic IsIsomorphic(Ax1::GSet, tau1::Map, shape1::SeqEnum, Ax2::GSet, tau2::M
   
   and perm maps shape1 to shape2.
   }
-  if #Ax1 ne #Ax2 then
+  if #Ax1 ne #Ax2 or {*sh[2] : sh in shape1*} ne {*sh[2] : sh in shape2*} then
     return false, _, _;
   end if;
   
@@ -586,7 +583,7 @@ intrinsic RestrictShape(Ax::GSet, tau::Map, shape::SeqEnum, axes::SetIndx : K :=
       // If the size of the largest subalgebra is 6, we need to record 4s and 6s.
       // Otherwise, we just need to record the ones with size equal to the largest.
       // in all cases this means recording all 4s, 5s, and 6s or the first in the rep (if it is a 2, or 3 then it is either the only one in the rep, or is contained in something larger).
-      // Since components from the larger algebra may split but not join, a defining subalgebra in the larger algebra must either be defining in the smaller algebra, or not intersect at all.  So when identifying which subalgebras from the larger algebra are seen in the smaller, we need only consdier the defining subalgebras of the smaller algebra.
+      // Since components from the larger algebra may split but not join, a defining subalgebra in the larger algebra must either be defining in the smaller algebra, or not intersect at all.  So when identifying which subalgebras from the larger algebra are seen in the smaller, we need only consider the defining subalgebras of the smaller algebra.
       
       if not (#o ge 4 or #o eq #rep[1]) then
         continue rep;

@@ -51,7 +51,7 @@ intrinsic PrintProperties(algs::SeqEnum, filename::MonStgElt: long := false, hea
       shape_mults := {* sh[2] : sh in A`shape *};
       shape_set := {@ sh[2] : sh in A`shape @};
 
-      // Realy we want to remove the 4Bs in the same orbit as the 6As too, but this is too much work...
+      // Really we want to remove the 4Bs in the same orbit as the 6As too, but this is too much work...
       if no_6A5A and shape_set diff {@ "6A", "5A" @} ne {@@} then
         // if you try to use diff, it reorders!
         shape_set := {@ sh : sh in shape_set | sh notin {"6A", "5A"} @};
