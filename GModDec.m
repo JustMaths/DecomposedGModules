@@ -99,7 +99,7 @@ intrinsic GModuleAction(M::GModDec) -> Map
 end intrinsic;
 /*
 
-=======  Creating a GModDecs  =======
+=======  Creating a GModDec  =======
 
 */
 intrinsic DecomposedGModule(M::GModDec) -> GModDec, AlgMatElt
@@ -1108,3 +1108,4 @@ intrinsic '@'(x::GModDecElt, psi::Map) -> GModDecElt
   return Parent(x)!(Vector(x)*psi);
 end intrinsic;
 */
+

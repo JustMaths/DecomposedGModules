@@ -158,9 +158,9 @@ intrinsic PartialAxialAlgebra(Ax::GSetIndx, tau::Map, shape::SeqEnum: fusion_tab
     subsp := RSpaceWithBasis([ A`W.i : i in orb]);
     subalgs`subsps cat:= [* subsp *];
 
-    path := Sprintf("%o/%o/%m/basic_algebras/%o", library_location, fusion_table`directory, BaseRing(A), type);
-    if ExistsPath(path) then
-      alg := LoadPartialAxialAlgebra(path);
+    path := Sprintf("%o/%o/%m/basic_algebras", library_location, fusion_table`directory, BaseRing(A));
+    if ExistsPath(path) and Sprintf("%o.json", type) in ls(path) then
+      alg := LoadPartialAxialAlgebra(Sprintf("%o/%o", path, type));
     else
       alg := ChangeField(LoadPartialAxialAlgebra(Sprintf("%o/%o/RationalField()/basic_algebras/%o", library_location, fusion_table`directory, type)), field);
     end if;
