@@ -10,17 +10,33 @@ declare attributes GModDecHom:
   image,            // A GModDec giving the image
   maps;             // A List of vector space homomorphisms representing the maps
 
-
+import "GModDec.m": CreateElement;
 /*
 
 ======== Basic properties of maps ========
 
 */
+intrinsic Print(f::GModDecHom)
+  {
+  Prints a GModDecHom.
+  }
+  printf "Homomorphism from: %o to %o", Domain(f), Image(f);
+end intrinsic;
+
 intrinsic Domain(f::GModDecHom) -> GModDec
   {
   The domain of the map f.
   }
   return f`domain;
+end intrinsic;
+
+intrinsic Codomain(f::GModDecHom) -> GModDec
+  {
+  The Coomain of the map f.
+  }
+  M := f`domain;
+  codims := [ Codomain(f`maps[i]) : i in [1..#f`maps]];
+  return sub<M | codims>;
 end intrinsic;
 
 intrinsic Image(f::GModDecHom) -> GModDec
@@ -30,11 +46,21 @@ intrinsic Image(f::GModDecHom) -> GModDec
   return f`image;
 end intrinsic;
 
-intrinsic Print(f::GModDecHom)
+intrinsic Kernel(f::GModDecHom) -> GModDec
   {
-  Prints a GModDecHom.
+  The kernel of the map f.
   }
-  printf "Homomorphism from: %o to %o", Domain(f), Image(f);
+  M := f`domain;
+  kers := [ Kernel(f`maps[i]) : i in [1..#f`maps]];
+  return sub<M | kers>;
+end intrinsic;
+
+intrinsic IsIdentity(f::GModDecHom) -> BoolElt
+  {
+  Is the map the identity homomorphism?
+  }
+  // NOT YET IMPLMENTED
+  // return null;
 end intrinsic;
 /*
 
@@ -64,7 +90,8 @@ intrinsic DecomposedGModuleHomomorphism(M::GModDec, N::GModDec, S::[Map]) -> GMo
   // Might have got this working now.  Old check is BaseRing(Domain(S[i])) eq BaseRing(M) and Dimension(Domain(S[i])) eq Dimension(M`subspaces[i])
   require forall{ i : i in [1..#M`irreducibles] | Domain(S[i]) eq M`subspaces[i]}: "The domains of the given maps are not the homogeneous components of the given domain module.";
   // if fails, use same check as old check above.
-  require forall{ i : i in [1..#N`irreducibles] | Image(S[i]) subset N`subspaces[i]}: "The images of the given maps are not contained in the homogeneous components of the given image module.";
+  require forall{ i : i in [1..#N`irreducibles] | Image(S[i]) subset Generic(N`subspaces[i])}: "The images of the given maps are not contained in the homogeneous components of the given image module.";
+  require forall{ i : i in [1..#N`irreducibles] | Codomain(S[i]) subset N`subspaces[i]}: "The codomain of the given maps are not contained in the homogeneous components of the given image module.";
   return CreateMap(M, N, S);
 end intrinsic;
 
@@ -74,7 +101,26 @@ intrinsic Hom(M::GModDec, N::GModDec, S::[Map]) -> GModDecHom
   }
   return DecomposedGModuleHomomorphism(M, N, S);
 end intrinsic;
+/*
 
+======== New maps from old ========
+
+*/
+intrinsic '*'(f::GModDecHom, g::GModDecHom) -> GModDecHom
+  {
+  Composition of f and g.
+  }
+  require f`image subset g`domain: "The domain of one map is not contained in the image of the other.";
+  return CreateMap(f`domain, g`image, [ f`maps[i]*g`maps[i] : i in [1..#Domain(f)`irreducibles]]);
+end intrinsic;
+
+intrinsic Inverse(f::GModDecHom) -> GModDecHom
+  {
+  The inverse of f.
+  }
+  invs := [ Inverse(f`maps[i]) : i in [1..#f`maps]];
+  return CreateMap(Codomain(f), f`domain, invs);
+end intrinsic;
 /*
 
 ======== Application of a map ========
@@ -84,14 +130,38 @@ intrinsic '@'(m::GModDecElt, f::GModDecHom) -> GModDecElt
   {
   Apply f to m.
   }
-  require f`domain eq Parent(m): "The element is not in the domain of the map.";
+  require m in f`domain: "The element is not in the domain of the map.";
   M := Generic(Parent(m));
   N := Generic(f`image);
-  ff := [* Matrix(BaseRing(M), M`multiplicities[i], N`multiplicities[i],
-                  [ M`subspaces[i].j@f`maps[i] : j in [1..Dimension(M`subspaces[i])]])
+  ff := [* Transpose(Matrix(BaseRing(M), M`multiplicities[i], N`multiplicities[i],
+                  [ M`subspaces[i].j@f`maps[i] : j in [1..Dimension(M`subspaces[i])]]))
                : i in [1..#M`irreducibles] *];
-  xx := [* Transpose(ff[i])*m`elt[i] : i in [1..#f`maps] *];
+  xx := [* ff[i]*m`elt[i] : i in [1..#f`maps] *];
   return CreateElement(Image(f), xx);
+end intrinsic;
+
+intrinsic '@'(S::[GModDecElt], f::GModDecHom) -> SeqEnum
+  {
+  Apply f to the sequence S.
+  }
+  // Could be done faster if needed.
+  return [ m@f : m in S];
+end intrinsic;
+
+intrinsic '@'(S::{@GModDecElt@}, f::GModDecHom) -> SetIndx
+  {
+  Apply f to the indexed set S.
+  }
+    // Could be done faster if needed.
+  return {@[ m@f : m in S@};
+end intrinsic;
+
+intrinsic '@'(S::{GModDecElt}, f::GModDecHom) -> SetEnum
+  {
+  Apply f to the set S.
+  }
+    // Could be done faster if needed.
+  return { m@f : m in S};
 end intrinsic;
 
 intrinsic '@'(M::GModDec, f::GModDecHom) -> GModDec
@@ -110,6 +180,9 @@ intrinsic '@'(M::GModDec, f::GModDecHom) -> GModDec
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   return Mnew;
 end intrinsic;
+
+// Do preimages??
+
 /*
 
 ======== Translation into a matrix ========
