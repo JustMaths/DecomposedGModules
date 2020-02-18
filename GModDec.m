@@ -390,11 +390,13 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   // The DirectSum above returns answer that is a subspace of the direct sum of ambient spaces.  We don't want this so we need to build some maps and redefine the subspaces.
   
   Mnew`subspaces := [ VectorSpace(F, Dimension(t[1])) : t in sums ];
-  homs := [ hom< sums[i,1] -> Mnew`subspaces[i] | Dimension(Mnew`subspaces[i]) eq 0 select [] else BasisMatrix(Mnew`subspaces[i])> : i in [1..#Mnew`subspaces]];
+  homs := [ hom< sums[i,1] -> Mnew`subspaces[i] | Rows(BasisMatrix(Mnew`subspaces[i]))>
+              : i in [1..#Mnew`subspaces]];
+  homsinv := [ f^-1 : f in homs];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
   injs := [ Hom(Q[j], Mnew, [sums[i,2,j]*homs[i] : i in [1..#sums]]) : j in [1..#Q]];
-  projs := [ Hom(Mnew, Q[j], [homs[i]^-1*sums[i,3,j] : i in [1..#sums]]) : j in [1..#Q]];
+  projs := [ Hom(Mnew, Q[j], [homsinv[i]*sums[i,3,j] : i in [1..#sums]]) : j in [1..#Q]];
   
   return Mnew, injs, projs;
 end intrinsic;

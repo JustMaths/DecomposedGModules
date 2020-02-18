@@ -153,7 +153,7 @@ intrinsic '@'(S::{@GModDecElt@}, f::GModDecHom) -> SetIndx
   Apply f to the indexed set S.
   }
     // Could be done faster if needed.
-  return {@[ m@f : m in S@};
+  return {@ m@f : m in S@};
 end intrinsic;
 
 intrinsic '@'(S::{GModDecElt}, f::GModDecHom) -> SetEnum
