@@ -175,6 +175,7 @@ intrinsic '@'(M::GModDec, f::GModDecHom) -> GModDec
   Mnew`irreducibles := M`irreducibles;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
 
   Mnew`subspaces := [ M`subspaces[i]@f`maps[i] : i in [1..#f`maps]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];

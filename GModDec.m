@@ -161,6 +161,7 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
 
   N`tensors := [* [* false : j in [1..#N`irreducibles]*] : i in [1..#N`irreducibles]*];
   N`symmetric_squares := [* false : i in [1..#N`irreducibles]*];
+  N`restrictions := AssociativeArray();
   
   S := Sort(MultisetToSequence({* i^^N`multiplicities[i] : i in [1..#N`irreducibles]*}));
   CoB := Matrix([ VectorSpace(M) | M!u : u in Basis(U), U in dec])^-1 *
@@ -195,6 +196,7 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
   Mnew`irreducibles := M`irreducibles;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
   
   abs_irred := [ Dimension(EndomorphismAlgebra(U)) eq 1 : U in M`irreducibles];
   
@@ -276,6 +278,7 @@ intrinsic QuoConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
   Mnew`irreducibles := M`irreducibles;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
   
   quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
   
@@ -308,6 +311,7 @@ intrinsic QuoMap(M::GModDec, X::.) -> GModDecHom
   Mnew`irreducibles := M`irreducibles;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
   
   quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
   
@@ -321,7 +325,7 @@ end intrinsic;
 =======  Direct Sums  =======
 
 */
-
+// Given cached information about our GModDecs, we want to maintain it when we build new ones.
 /*
 
 Given a List Q of Lists, produce the merged version.
@@ -342,8 +346,25 @@ function Merge(Q)
 
   return L;
 end function;
+/*
 
-intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, AlgMatElt, AlgMatElt, AlgMatElt, AlgMatElt
+Given a List Q of AssociativeArrays, merge them by combining the information.
+
+*/
+function MergeAssoc(Q)
+  A := Assoc();
+  keys := [Keys(S) : S in Q];
+  allkeys := &join keys;
+  
+  for k in allkeys do
+    indexes := [ i : i in [1..#Q] | k in keys[i] ];
+    A[k] := Merge(Q[indexes]);
+  end for;
+
+  return A;
+end function;
+
+intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, GModDecHom, GModDecHom, GModDecHom, GModDecHom
   {
   The direct sum of M and N, the two inclusion maps and the two projection maps.
   }
@@ -353,8 +374,9 @@ intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, AlgMatElt, AlgMatElt, Al
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
   
-  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
-  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`tensors := [* Merge([* M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares *]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions *]);
   
   sums := [ < V, inj1, inj2, proj1, proj2 > 
       where V, inj1, inj2, proj1, proj2 := DirectSum(M`subspaces[i], N`subspaces[i])
@@ -389,6 +411,7 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   
   Mnew`tensors := [* Merge([*M`tensors[i] : M in Q*]) : i in [1..#Mnew`irreducibles]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares : M in Q*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions : M in Q*]);
   
   sums := [ < V, injs, projs > 
       where V, injs, projs := DirectSum([ M`subspaces[i] : M in Q])
@@ -590,6 +613,7 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
   
   Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..no_const]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
   mult := next;
   Mnew`multiplicities := mult;
@@ -678,6 +702,7 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, SeqEnum
   
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
   
   mult := next;
   Mnew`multiplicities := mult;
@@ -740,7 +765,11 @@ Have a function to calculate and cache the restriction for an irreducible
 
 */
 RF := recformat< subgroup:GrpPerm, irreducibles:SeqEnum, restrictions:List>;
+/*
 
+For the ith irreducible of M, we calculate the restriction to a subgroup M.  We record a tuple <mult, CoB>, where mult is the multiplicities of the H-irreducibles and CoB is a change of basis matrix from the H-irreducible to the ith irreducible of M.
+
+*/
 function GetRestriction(M, i, H)
   if H notin Keys(M`restrictions) then
     // We use a record to cache the restrictions
@@ -755,35 +784,31 @@ function GetRestriction(M, i, H)
     _, mults, dec := GetDecomposition(V: irreds := Hirreds);
     
     S := Sort(MultisetToSequence({* i^^mults[i] : i in [1..#Hirreds]*}));
-    CoB := Matrix([ VectorSpace(V) | V!u : u in Basis(U), U in dec])^-1 *
-           DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], Hirreds[S[i]]) : i in [1..#dec]>);
+    // Not entirely sure if moving the inverse into the DiagonalJoin speeds this up or not.
+    CoB := DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], Hirreds[S[i]]) : i in [1..#dec]>)^-1*Matrix([ VectorSpace(V) | V!u : u in Basis(U), U in dec]);
     
+    // Probably can edit to remove the lifts all together, just need the multiplicities
+    /*
     F := BaseRing(M);
     V1 := VectorSpace(F, 1);
     lifts := [ hom< VectorSpace(F, mults[i]) -> V1 | Rows(BasisMatrix(VectorSpace(F, mults[i])))> : i in [1..#Hirreds]];
+    */
     
-    M`restrictions[H]`restrictions[i] := <CoB, lifts>;
+    M`restrictions[H]`restrictions[i] := <mults, CoB>;//, lifts>;
   end if;
 
-  return M`restrictions[H]`restrictions[i,1], M`restrictions[H]`restrictions[i,2];
+  return M`restrictions[H]`restrictions[i,1], M`restrictions[H]`restrictions[i,2];//, M`restrictions[H]`restrictions[i,3];
 end function;
 /*
 
-Given a List Q of AssociativeArrays, merge them by combining the information.
+We define a lift record
+
+LiftClass`lifts is a List of Lists where the j,ith entry is a map from the jth homogeneous component of the image (represented as a subspace) to the ith homogeneous component of the domain.
+
+NB should this be a new type???
 
 */
-function MergeAssoc(Q)
-  A := Assoc();
-  keys := [Keys(S) : S in Q];
-  allkeys := &join keys;
-  
-  for k in allkeys do
-    indexes := [ i : i in [1..#Q] | k in keys[i] ];
-    A[k] := Merge(Q[indexes]);
-  end for;
-
-  return A;
-end function;
+LiftClass := recformat< domain:GModDec, image:GModDec, lifts:List>;
 /*
 
 We have already precomputed and cached the Res(U, H) for each irreducible U.
@@ -792,26 +817,28 @@ Now if we do the restriction of M of H it is a sum of
 
 
 */
-intrinsic Restriction(M::GModDec, H::Grp) -> GModDec
+intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, Rec, AlgMatElt
   {
-  Returns the restriction of the G-module M to an H-module where H is a subgroup of G.
+  Returns the restriction of the G-module M to the H-module Res(M, H) where H is a subgroup of G.  Also returns a LiftClass record where the j,ith entry is a map from the jth homogeneous component of Res(M, H) (represented as a subspace) to the ith homogeneous component of M.  The optional parameter change_of_basis controls whether a (H-equivariant) change of basis matrix from Res(M, H) to M is also returned.
   }
   require H subset Group(M): "The given group is not a subgroup of the group for the module.";
   vprint GModDec, 2: "Calculating the GModDec restriction.";
   
-  F := BaseField(M);
+  F := BaseRing(M);
   t := Cputime();
   
-  // For the ith Homogeneous component, S_i \otimes U_i, it has a decomposition \bigoplus_j T_j \otimes V_j into a direct sum of H-mods.  These become reordered in the end.  We save in the ith position of pos a sequence of ranges corresponding to the multiplicities of the V_j.  NB this is per homogeneous component!
+  // For the ith Homogeneous component, S_i \otimes U_i, it has a decomposition \bigoplus_j T_j \otimes V_j into a direct sum of H-mods.  These become reordered in the end.
+  // We calculate this reordering and save it in poss.  The i,jth position of poss a List [* start pos, end pos *] for the start and end positions of the all the T_j in the decomposition of S_i.
   poss := [ ];
+  all_irred_mults := [];
   
   for i in [1..#M`irreducibles] do
     if  M`multiplicities[i] eq 0 then
       continue;
     end if;
     
-    _, lifts := GetRestriction(M, i, H);
-    mults := [ Dimension(Domain(lifts[f])) : f in lifts ];
+    irred_mults := GetRestriction(M, i, H);
+    all_irred_mults[i] := irred_mults;
     
     if not assigned last then
       // This is the first time through so we initialise variables
@@ -819,8 +846,8 @@ intrinsic Restriction(M::GModDec, H::Grp) -> GModDec
       no_H_irreds := #H_irreds;
       last := [ 0 : j in [1..no_H_irreds]];
     end if;
-    next := [ last[k]+M`multiplicities[i]*Dimension(lifts[k]) : k in [1..no_H_irreds]];
-    poss[i] := [ [last[k]+1..next[k]] : k in [1..no_H_irreds]];
+    next := [ last[k]+M`multiplicities[i]*irred_mults[k] : k in [1..no_H_irreds]];
+    poss[i] := [ [* last[k], next[k]*] : k in [1..no_H_irreds]];
     last := next;
   end for;
   
@@ -831,24 +858,81 @@ intrinsic Restriction(M::GModDec, H::Grp) -> GModDec
   Mnew`subspaces := [ VectorSpace(BaseRing(M), d) : d in Mnew`multiplicities ];
   
   Mnew`tensors := [* [* false : j in [1..#Mnew`irreducibles]*] : i in [1..#Mnew`irreducibles]*];
-  Mnew`symmetric_squares := [* false : i in [1..#Mnew`irreducibles]*];
+  Mnew`symmetric_squares := [* false : j in [1..#Mnew`irreducibles]*];
   Mnew`restrictions := AssociativeArray();
   vprintf GModDec, 4: "Time taken to build the GModDec restriction: %o.\n", Cputime(t);
   
   // Now we want to create the change of basis matrix and the lifts.
   
-
-
-
-
+  // We first build the lifts for the modules
+  // Could make this a sequence at the expense of having to build it all at once and making the code really complicated.
+  all_lifts := [**];
+  for j -> T_j in Mnew`subspaces do
+    if Dimension(T_j) eq 0 then
+      all_lifts[j] := [* hom< T_j -> S_i | > : S_i in M`subspaces*];
+      continue;
+    end if;
+    lifts := [**];
+    for i -> S_i in M`subspaces do
+      if Dimension(S_i) eq 0 then
+        lifts[i] := hom< T_j -> S_i | ZeroMatrix(F, Dimension(T_j), Dimension(S_i))>;
+      else
+        lifts[i] := hom< T_j -> S_i | 
+          VerticalJoin( < ZeroMatrix(F, poss[i,j,1], Dimension(S_i)),
+             TensorProduct(IdentityMatrix(F, Dimension(S_i)),
+                           Matrix(F, all_irred_mults[i,j], 1, [1 : k in [1..all_irred_mults[i,j]]])),
+             ZeroMatrix(F, Dimension(T_j) - poss[i,j,2], Dimension(S_i))>)>;
+      end if;
+    end for;
+    all_lifts[j] := lifts;
+  end for;
   
+  lifts := rec<LiftClass | domain := Mnew, image := M, lifts := all_lifts>;
+  
+  if change_of_basis then
+    /*
+    The CoB is the inverse of a map from M (viewed as a direct sum) to Res(M, H).
+    This is a composition of
+      - a diagonal matrix D whose blocks are the CoB from the irreducible U to Res(U,H), taken with multiplicity
+      - a permutation matrix P to reorder the irreducibles into the order of Res(M, H)
     
-  // We define maps to keep track of the move from d dimensional subspaces to full vector spaces of dimension d
-  homs := [ hom< VectorSpace(F, d) -> M`subspaces[i] | Rows(BasisMatrix(M`subspaces[i]))>
-            : i -> d in M`multiplicities ];
+    We calculate the inverse of each of these and multiply.
+    */
+    // First get all the CoB matrices
+    CoBs := [* d ne 0 select CoB where _, CoB := GetRestriction(M, i, H) else [] : i -> d in M`multiplicities*];
 
-  // NOT YET IMPLMENTED
-  // return null;
+    Dinv := DiagonalJoin(< CoBs[i] : j in [1..d], i -> d in M`multiplicities>);
+    
+    Hhomblocks := [ i eq 1 select 0 else Self(i-1) + Dimension(Mnew`irreducibles[i-1])*Mnew`multiplicities[i-1] : i in [1..#Mnew`irreducibles]];
+    
+    perm := [];
+    for i -> d in M`multiplicities do
+      if d eq 0 then
+        continue;
+      end if;
+      mults := all_irred_mults[i];
+      for k in [1..d] do
+        for j in [j : j in [1..#mults] | mults[j] ne 0] do
+          perm cat:= [ l eq 1 select Hhomblocks[j] + ((k-1)*mults[j] + poss[i,j,1])*Dimension(H_irreds[j])+1 else Self(l-1)+1 : l in [1..mults[j]*Dimension(H_irreds[j])]];
+        end for;
+      end for;
+    end for;
+    Pinv := PermutationMatrix(F, perm)^-1;
+    
+    CoB := Pinv*Dinv;
+    return Mnew, lifts, CoB;
+  end if;
+  
+  return Mnew, lifts, _;
+end intrinsic;
+
+intrinsic LiftModule(M::GModDec, lifts::Rec) -> GModDec
+  {
+  Lift the H-module M to a G-module using lifts.
+  }
+  require M subset lifts`domain: "The module given is not in the domain of the lift.";
+  N := lifts`image;
+  return sub< N | [ &+[ Msub@lifts`lifts[j,i] : j -> Msub in M`subspaces] : i in [1..#N`irreducibles]]>;
 end intrinsic;
 
 intrinsic ChangeField(M::GModDec, F::Fld) -> GModDec
@@ -888,6 +972,7 @@ intrinsic Generic(M::GModDec) -> GModDec
   Mnew`irreducibles := M`irreducibles;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
   
   Mnew`subspaces := [ Generic(V) : V in M`subspaces ];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -933,8 +1018,9 @@ intrinsic '+'(M::GModDec, N::GModDec) -> GModDec
   Mnew := New(GModDec);
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := M`tensors;
-  Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
   Mnew`subspaces := [ M`subspaces[i] + N`subspaces[i] : i in [1..#M`irreducibles]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -952,8 +1038,9 @@ intrinsic 'meet'(M::GModDec, N::GModDec) -> GModDec
   Mnew := New(GModDec);
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := M`tensors;
-  Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
   Mnew`subspaces := [ M`subspaces[i] meet N`subspaces[i] : i in [1..#M`irreducibles]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -970,8 +1057,9 @@ intrinsic Complement(M::GModDec, N::GModDec) -> GModDec
   Mnew := New(GModDec);
   Mnew`group := M`group;
   Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := M`tensors;
-  Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
   Mnew`subspaces := [ Complement(M`subspaces[i], N`subspaces[i]) : i in [1..#M`irreducibles]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
