@@ -203,14 +203,7 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
   if false in abs_irred then
     print "WARNING - one of the irreducibles is not absolutely irreducible.  The answer may well be incorrect!";
   end if;
-  /*
-  // if U is not absolutely irreducible, we must use the old method
-  function GetSubmodule(i, L)
-    N := DirectSum([ M`irreducibles[i] : j in [1..M`multiplicities[i]]]);
-    return sub<N|L>;  
-  end function;
-  */
-  
+
   if Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
     
     if Type(X) in {SetEnum, SetIndx} then
@@ -492,9 +485,6 @@ function GetTensor(M, i, j)
     iso := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(M`irreducibles[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
     vprintf GModDec, 4: "Time taken for indecomposables method: %o.\n", Cputime(tt);
     
-    //assert so;
-    //assert3 forall(err){ <i,g> : g in Generators(Group(UxV)), i in [1..Dimension(UxV)] | N!Eltseq(((UxV.i)*g)*mat) eq (N!Eltseq((UxV.i)*mat))*g};
-    
     M`tensors[i,j] := <S, iso>;
   else
      vprint GModDec, 2: "Tensor already cached.";
@@ -564,7 +554,7 @@ function TensorConvert(iso, S, pos, dims, mult)
       num := (mult[i]-pos[i,#pos[i]])*dims[i];
     end if;
   end for;
-  // Now we must app the last one as well
+  // Now we must append the last one as well
   Append(~zerodims, num);
   
   assert &+zerodims + dim eq &+[mult[i]*dims[i] : i in [1..#mult]];
@@ -787,17 +777,10 @@ function GetRestriction(M, i, H)
     // Not entirely sure if moving the inverse into the DiagonalJoin speeds this up or not.
     CoB := DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], Hirreds[S[i]]) : i in [1..#dec]>)^-1*Matrix([ VectorSpace(V) | V!u : u in Basis(U), U in dec]);
     
-    // Probably can edit to remove the lifts all together, just need the multiplicities
-    /*
-    F := BaseRing(M);
-    V1 := VectorSpace(F, 1);
-    lifts := [ hom< VectorSpace(F, mults[i]) -> V1 | Rows(BasisMatrix(VectorSpace(F, mults[i])))> : i in [1..#Hirreds]];
-    */
-    
     M`restrictions[H]`restrictions[i] := <mults, CoB>;//, lifts>;
   end if;
 
-  return M`restrictions[H]`restrictions[i,1], M`restrictions[H]`restrictions[i,2];//, M`restrictions[H]`restrictions[i,3];
+  return M`restrictions[H]`restrictions[i,1], M`restrictions[H]`restrictions[i,2];
 end function;
 /*
 
@@ -1181,7 +1164,7 @@ intrinsic IsCoercible(M::GModDec, x::.) -> BoolElt, GModDecElt
     end if;
     xx := [* Matrix(BaseRing(M), Mbig`multiplicities[i], Dimension(Mbig`irreducibles[i]), x[seq[i]]) : i in [1..#seq]*];
     return true, CreateElement(M, xx);
-    // Should also do for if the vectors if dim Dim(M)
+    // Should also do for if the vectors have dim Dim(M)
   else
     return false, "Illegal coercion.";
   end if;

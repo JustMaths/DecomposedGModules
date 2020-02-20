@@ -84,12 +84,7 @@ intrinsic DecomposedGModuleHomomorphism(M::GModDec, N::GModDec, S::[Map]) -> GMo
   }
   require BaseRing(M) eq BaseRing(N) and Group(M) eq Group(N): "The domain and image modules are not compatible.";
   require #S eq #M`irreducibles: "The number of maps given is not correct.";
-  // require Type(S) in { List, SeqEnum, SetIndx} and #S eq #M`irreducibles and { Type(S[i]) : i in [1..#M`irreducibles] } subset { ModMatFldElt, ModMatRngElt, Map}: "The maps are not given in the required form.";
-  
-  // Can't just check if Domain(S[i]) eq M`subspaces[i] as this won't work for vectorspaces which aren't full ie are subspaces.
-  // Might have got this working now.  Old check is BaseRing(Domain(S[i])) eq BaseRing(M) and Dimension(Domain(S[i])) eq Dimension(M`subspaces[i])
   require forall{ i : i in [1..#M`irreducibles] | Domain(S[i]) eq M`subspaces[i]}: "The domains of the given maps are not the homogeneous components of the given domain module.";
-  // if fails, use same check as old check above.
   require forall{ i : i in [1..#N`irreducibles] | Image(S[i]) subset Generic(N`subspaces[i])}: "The images of the given maps are not contained in the homogeneous components of the given image module.";
   require forall{ i : i in [1..#N`irreducibles] | Codomain(S[i]) subset N`subspaces[i]}: "The codomain of the given maps are not contained in the homogeneous components of the given image module.";
   return CreateMap(M, N, S);
