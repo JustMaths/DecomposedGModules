@@ -7,8 +7,25 @@ declare type GModDecHom;
 
 declare attributes GModDecHom:
   domain,           // A GModDec giving the domain
-  image,            // A GModDec giving the image
+  codomain,         // A GModDec giving the codomain
   maps;             // A List of vector space homomorphisms representing the maps
+
+declare type GModDecBil;
+
+/*
+Let A = \bigoplus_i S_i \otimes U_i
+    B = \bigoplus_i T_i \otimes U_i
+    C = \bigoplus_i Z_i \otimes U_i
+
+And U_i \otimes u_j = \bigoplus_i R_i \otimes U_i
+
+For each i,j,k we have a tensor:
+  R_k \otimes S_i \otimes T_i \to Z_k
+*/
+declare attributes GModDecBil:
+  domain,           // A List of two GModDecs A, B giving the domain
+  codomain,         // A GModDec C giving the codomain
+  maps;             // A List of Lists of Lists of tensors as above
 
 import "GModDec.m": CreateElement;
 /*
@@ -20,7 +37,7 @@ intrinsic Print(f::GModDecHom)
   {
   Prints a GModDecHom.
   }
-  printf "Homomorphism from: %o to %o", Domain(f), Image(f);
+  printf "Homomorphism from: %o to %o", Domain(f), Codomain(f);
 end intrinsic;
 
 intrinsic Domain(f::GModDecHom) -> GModDec
@@ -34,16 +51,16 @@ intrinsic Codomain(f::GModDecHom) -> GModDec
   {
   The Coomain of the map f.
   }
-  M := f`domain;
-  codims := [ Codomain(f`maps[i]) : i in [1..#f`maps]];
-  return sub<M | codims>;
+  return f`codomain;
 end intrinsic;
 
 intrinsic Image(f::GModDecHom) -> GModDec
   {
   The image of the map f.
   }
-  return f`image;
+  M := f`domain;
+  ims := [ Image(f`maps[i]) : i in [1..#f`maps]];
+  return sub<M | ims>;
 end intrinsic;
 
 intrinsic Kernel(f::GModDecHom) -> GModDec
@@ -69,10 +86,10 @@ end intrinsic;
 */
 
 // function to create the maps
-function CreateMap(dom, im, maps)
+function CreateMap(dom, cod, maps)
   f := New(GModDecHom);
   f`domain := dom;
-  f`image := im;
+  f`codomain := cod;
   f`maps := maps;
   return f;
 end function;
@@ -85,8 +102,8 @@ intrinsic DecomposedGModuleHomomorphism(M::GModDec, N::GModDec, S::[Map]) -> GMo
   require BaseRing(M) eq BaseRing(N) and Group(M) eq Group(N): "The domain and image modules are not compatible.";
   require #S eq #M`irreducibles: "The number of maps given is not correct.";
   require forall{ i : i in [1..#M`irreducibles] | Domain(S[i]) eq M`subspaces[i]}: "The domains of the given maps are not the homogeneous components of the given domain module.";
-  require forall{ i : i in [1..#N`irreducibles] | Image(S[i]) subset Generic(N`subspaces[i])}: "The images of the given maps are not contained in the homogeneous components of the given image module.";
-  require forall{ i : i in [1..#N`irreducibles] | Codomain(S[i]) subset N`subspaces[i]}: "The codomain of the given maps are not contained in the homogeneous components of the given image module.";
+  require forall{ i : i in [1..#N`irreducibles] | Codomain(S[i]) subset Generic(N`subspaces[i])}: "The codomains of the given maps are not contained in the homogeneous components of the given image module.";
+  require forall{ i : i in [1..#N`irreducibles] | Image(S[i]) subset N`subspaces[i]}: "The image of the given maps are not contained in the homogeneous components of the given image module.";
   return CreateMap(M, N, S);
 end intrinsic;
 
@@ -105,8 +122,8 @@ intrinsic '*'(f::GModDecHom, g::GModDecHom) -> GModDecHom
   {
   Composition of f and g.
   }
-  require f`image subset g`domain: "The domain of one map is not contained in the image of the other.";
-  return CreateMap(f`domain, g`image, [ f`maps[i]*g`maps[i] : i in [1..#Domain(f)`irreducibles]]);
+  require Image(f) subset g`domain: "The image of one map is not contained in the domain of the other.";
+  return CreateMap(f`domain, g`codomain, [ f`maps[i]*g`maps[i] : i in [1..#Domain(f)`irreducibles]]);
 end intrinsic;
 
 intrinsic Inverse(f::GModDecHom) -> GModDecHom
@@ -114,7 +131,7 @@ intrinsic Inverse(f::GModDecHom) -> GModDecHom
   The inverse of f.
   }
   invs := [ Inverse(f`maps[i]) : i in [1..#f`maps]];
-  return CreateMap(Codomain(f), f`domain, invs);
+  return CreateMap(Image(f), f`domain, invs);
 end intrinsic;
 /*
 
@@ -126,13 +143,13 @@ intrinsic '@'(m::GModDecElt, f::GModDecHom) -> GModDecElt
   Apply f to m.
   }
   require m in f`domain: "The element is not in the domain of the map.";
-  M := Generic(Parent(m));
-  N := Generic(f`image);
+  M := Parent(m);
+  N := Generic(f`codomain);
   ff := [* Transpose(Matrix(BaseRing(M), M`multiplicities[i], N`multiplicities[i],
                   [ M`subspaces[i].j@f`maps[i] : j in [1..Dimension(M`subspaces[i])]]))
                : i in [1..#M`irreducibles] *];
   xx := [* ff[i]*m`elt[i] : i in [1..#f`maps] *];
-  return CreateElement(Image(f), xx);
+  return CreateElement(Codomain(f), xx);
 end intrinsic;
 
 intrinsic '@'(S::[GModDecElt], f::GModDecHom) -> SeqEnum
@@ -194,10 +211,65 @@ intrinsic MapToMatrix(f::GModDecHom) -> ModMatFldElt
   irredbas := < M`multiplicities[i] eq 0 select ZeroMatrix(F, 0,Dimension(M`irreducibles[i]))
                  else BasisMatrix(VectorSpace(M`irreducibles[i]))
                     : i in [1..#M`irreducibles]>;
-  maps := < Dimension(Domain(f`maps[i])) eq 0 select ZeroMatrix(F, 0, Dimension(Codomain(f`maps[i])))
+  maps := < Dimension(Domain(f`maps[i])) eq 0 select ZeroMatrix(F, 0, Dimension(Image(f`maps[i])))
              else Dimension(Image(f`maps[i])) eq 0 select ZeroMatrix(F, Dimension(Domain(f`maps[i])), 0)
              else Matrix([v@f`maps[i] : v in Basis(Domain(f`maps[i]))])
                 : i in [1..#f`maps] >;
   mat := DiagonalJoin(< TensorProduct(maps[i], irredbas[i]) : i in [1..#f`maps]>);
   return mat;
 end intrinsic;
+/*
+
+======== GModDecBil =========
+
+*/
+intrinsic Domain(f::GModDecBil) -> GModDec
+  {
+  Domain of f.
+  }
+  return f`domain;
+end intrinsic;
+
+intrinsic Codomain(f::GModDecBil) -> GModDec
+  {
+  Codomain of f.
+  }
+  return f`codomain;
+end intrinsic;
+
+intrinsic SubspaceImage(M::GModDec, N::GModDec, f::GModDecBil) -> GModDec
+  {
+  Given a bilinear map from 
+  }
+  dom := f`domain;
+  require M subset dom[1] and N subset dom[2]: "The modules are not elements of the domain of the bilinear map.";
+  
+  C := Codomain(f);
+  
+  Im := [ PowerStructure(Type(M`subspaces[1])) | ];
+  for k -> Z in C`subspaces do
+    // We take the subspaces S_i and T_j and decompose our tensor
+    Zs := [ Parent(Z) |];
+    for i -> S_i in M`subspaces do
+      for j -> T_j in N`subspaces do
+        // Find the d = Dimension(Z)*Dimension(R) matrices corresponding to the maps M in Hom(S \otimes T, F^d)
+        mats := AsMatrices(f`maps[i,j,k], 3, 0);
+        
+        if #mats eq 0 then
+          continue;
+        end if;
+        ST := TensorProduct(S_i, T_j);
+        
+        // Can do this quicker with matrices          
+        Append(~Zs, sub<Z | &cat[Rows(&+[ st[l]*mats[l] : l in [1..#mats]]) : st in Basis(ST)]>);
+      end for;
+    end for;
+    Zs := &+Zs;
+    
+    Append(~Im, Zs);
+  end for;
+  
+  return sub< C | Im>;
+end intrinsic;
+
+

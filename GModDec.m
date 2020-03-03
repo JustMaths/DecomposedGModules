@@ -51,7 +51,7 @@ intrinsic Print(M::GModDec)
   {
   Prints a GModDec.
   }
-  printf "A DecomposedGModule of dimension %o over %o", Dimension(M), BaseRing(M);
+  printf "DecomposedGModule of dimension %o over %o", Dimension(M), BaseRing(M);
 end intrinsic;
 
 intrinsic Group(M::GModDec) -> Grp
@@ -345,7 +345,7 @@ Given a List Q of AssociativeArrays, merge them by combining the information.
 
 */
 function MergeAssoc(Q)
-  A := Assoc();
+  A := AssociativeArray();
   keys := [Keys(S) : S in Q];
   allkeys := &join keys;
   
