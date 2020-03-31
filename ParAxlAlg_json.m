@@ -164,7 +164,7 @@ import sys
 
 filename = sys.argv[1]
 
-print \"/\".join(os.listdir(filename))
+print(\"/\".join(os.listdir(filename)))
 ";
 
 // Added to fix weird problem with the script not running properly on some machines
@@ -185,7 +185,7 @@ import sys
 
 filename = sys.argv[1]
 
-print os.stat(filename).st_size
+print(os.stat(filename).st_size)
 ";
 
 // Added to fix weird problem with the script not running properly on some machines
@@ -206,7 +206,7 @@ import sys
 
 filename = sys.argv[1]
 
-print os.path.isdir(filename)
+print(os.path.isdir(filename))
 ";
 
 // Added to fix weird problem with the script not running properly on some machines
