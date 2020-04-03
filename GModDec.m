@@ -204,7 +204,9 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
     print "WARNING - one of the irreducibles is not absolutely irreducible.  The answer may well be incorrect!";
   end if;
 
-  if Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
+  if #X eq 0 then
+     Mnew`subspaces := [ sub< Generic(U)|> : U in M`subspaces ];
+  elif Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
     
     if Type(X) in {SetEnum, SetIndx} then
       X := Setseq(X);
@@ -523,7 +525,89 @@ function GetS2(M, i)
   
   return M`symmetric_squares[i,1], M`symmetric_squares[i,2];
 end function;
+/*
 
+Tensor products
+
+*/
+intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
+  {
+  The tensor product of M and N.
+  }
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the same field.";
+  vprint GModDec, 2: "Calculating the GModDec tensor product.";
+  
+  t := Cputime();
+  if Dimension(M) eq 0 or Dimension(N) eq 0 then
+    return sub<M|>, _;
+  end if;
+  
+  F := BaseRing(M);
+  no_const := #M`irreducibles;
+  
+  irreds_M := {* i^^M`multiplicities[i] : i in [1..no_const]*};
+  irreds_N := {* i^^N`multiplicities[i] : i in [1..no_const]*};
+
+  // For each homogeneous component, S_i \otiems U_i and T_j \otimes U_j, their tensor product is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
+
+  start_pos := [[] : i in [1..no_const]];
+  last := [0 : k in [1..no_const]];
+
+  for i->mult_i in irreds_M, j -> mult_j in irreds_N do
+    R := GetTensor(M, i, j);
+    start_pos[i,j] := last;
+    last := [ last[k]+mult_i*mult_j*R[k] : k in [1..no_const]];
+  end for;
+
+  Mnew := New(GModDec);
+  Mnew`group := M`group;
+  Mnew`irreducibles := M`irreducibles;
+  
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..no_const]*];
+  Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
+  Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
+  
+  Mnew`multiplicities := last;
+  Mnew`subspaces := [ VectorSpace(F, d) : d in Mnew`multiplicities ];
+  vprintf GModDec, 4: "Time taken to build the GModDec tensor product: %o.\n", Cputime(t);
+  
+  vprint GModDec, 2: "Calculating the isomorphism.";
+  tt := Cputime();
+  Cat := TensorCategory([1,1,1,-1], {{3},{2},{1},{0}});
+  
+  bilmaps := [*[**] : i in [1..no_const] *];
+  start := [0 : k in [1..no_const]];
+  for i in [1..no_const], j in [1..no_const] do
+    mult_i := Multiplicity(irreds_M, i);
+    mult_j := Multiplicity(irreds_N, j);
+    if mult_i eq 0 or mult_j eq 0 then
+      assert not IsDefined(start_pos[i], j);
+    else
+      start := start_pos[i,j];
+    end if;
+    mult_R := GetTensor(M, i, j);
+    R := [ VectorSpace(F, d) : d in mult_R];
+    
+    injs := [* hom< Im-> Mnew`subspaces[k] |
+                              [<Im.l, Mnew`subspaces[k].(l+start[k])> : l in [1..Dimension(Im)]]>
+                      where Im := VectorSpace(F, mult_i*mult_j*mult_R[k])
+                      : k in [1..no_const]*];
+    
+    bilmaps[i,j] := [* Tensor([*R[k], M`subspaces[i], N`subspaces[j], Mnew`subspaces[k]*],
+                   func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
+                      : k in [1..no_const]*];
+  end for;
+  
+  ten_map := New(GModDecBil);
+  ten_map`domain := [* M, N *];
+  ten_map`codomain := Mnew;
+  ten_map`maps := bilmaps;
+
+  vprintf GModDec, 4: "Time taken to find the isomorphism: %o.\n", Cputime(tt);
+  
+  vprintf GModDec, 4: "Total time: %o.\n", Cputime(t);
+  return Mnew, ten_map;
+end intrinsic;
 /*
 
 Given two irreducibles U, V, we have already calculated their tensor UxV and an isomorphism iso onto our copy of this which is isomorphic to a direct sum of the contituents of UxV in order.
@@ -534,7 +618,7 @@ This function gives the image of UxV in our copy of MxN, where S is the list of 
 
 */
 function TensorConvert(iso, S, pos, dims, mult)
-  // We find how to chop up the images in iso to map onto the homogeneuos components.
+  // We find how to chop up the images in iso to map onto the homogeneous components.
   dim := NumberOfRows(iso);
   hompos := [ S[i]*dims[i] : i in [1..#S] | S[i] ne 0];
   breakpoints := [ i eq 1 select 0 else Self(i-1)+ hompos[i-1]: i in [1..#hompos+1]];
@@ -564,9 +648,9 @@ function TensorConvert(iso, S, pos, dims, mult)
   return HorizontalJoin(< IsOdd(i) select ZeroMatrix(F, dim, zerodims[(i+1) div 2]) else isoparts[i div 2] : i in [1..2*#isoparts+1]>);
 end function;
 
-intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, SeqEnum
+intrinsic TensorProductOld(M::GModDec, N::GModDec) -> GModDec, SeqEnum
   {
-  The tensor product of M and N.
+  The tensor product of M and N and a sequence of sequences giving the maps on elements of M and N into the tensor.
   }
   require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the same field.";
   vprint GModDec, 2: "Calculating the GModDec tensor product.";
