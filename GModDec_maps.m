@@ -21,6 +21,8 @@ And U_i \otimes U_j = \bigoplus_k R_k \otimes U_k
 
 For each i,j,k we have a tensor:
   R_k \otimes S_i \otimes T_j \to Z_k
+  
+NB this is stored as f`maps[i,j,k].  Note the difference in indexing.
 */
 declare attributes GModDecBil:
   domain,           // A List of two GModDecs A, B giving the domain
@@ -58,18 +60,16 @@ intrinsic Image(f::GModDecHom) -> GModDec
   {
   The image of the map f.
   }
-  M := f`domain;
   ims := [ Image(f`maps[i]) : i in [1..#f`maps]];
-  return sub<M | ims>;
+  return sub<f`codomain | ims>;
 end intrinsic;
 
 intrinsic Kernel(f::GModDecHom) -> GModDec
   {
   The kernel of the map f.
   }
-  M := f`domain;
   kers := [ Kernel(f`maps[i]) : i in [1..#f`maps]];
-  return sub<M | kers>;
+  return sub<f`domain | kers>;
 end intrinsic;
 
 intrinsic IsIdentity(f::GModDecHom) -> BoolElt
@@ -235,6 +235,13 @@ end intrinsic;
 ======== GModDecBil =========
 
 */
+intrinsic Print(f::GModDecBil)
+  {
+  Prints a GModDecBil.
+  }
+  printf "Bilinear map from: %o and %o to %o", Domain(f)[1], Domain(f)[2], Codomain(f);
+end intrinsic;
+
 intrinsic Domain(f::GModDecBil) -> GModDec
   {
   Domain of f.
@@ -249,9 +256,17 @@ intrinsic Codomain(f::GModDecBil) -> GModDec
   return f`codomain;
 end intrinsic;
 
-intrinsic SubspaceImage(M::GModDec, N::GModDec, f::GModDecBil) -> GModDec
+intrinsic Image(f::GModDecBil) -> GModDec
   {
-  Given a bilinear map from 
+  The image of the map f.
+  }
+  // NOT YET IMPLMENTED
+  // return null;
+end intrinsic;
+
+intrinsic SubmoduleImage(M::GModDec, N::GModDec, f::GModDecBil) -> GModDec
+  {
+  Given a bilinear map f: A \otimes B -> C and submodules M \leq A and N \leq B, return the submodule f(M, N).
   }
   dom := f`domain;
   require M subset dom[1] and N subset dom[2]: "The modules are not elements of the domain of the bilinear map.";
@@ -259,22 +274,21 @@ intrinsic SubspaceImage(M::GModDec, N::GModDec, f::GModDecBil) -> GModDec
   C := Codomain(f);
   
   Im := [ PowerStructure(Type(M`subspaces[1])) | ];
-  for k -> Z in C`subspaces do
+  for k in [1..#C`multiplicities] do
+    Z := C`subspaces[k];
     // We take the subspaces S_i and T_j and decompose our tensor
     Zs := [ Parent(Z) |];
-    for i -> S_i in M`subspaces do
-      for j -> T_j in N`subspaces do
-        // Find the d = Dimension(S)*Dimension(T) matrices corresponding to the maps M in Hom(R \otimes Z, F^d)
-        mats := AsMatrices(f`maps[i,j,k], 3, 0);
-        
-        if #mats eq 0 then
-          continue;
-        end if;
-        ST := TensorProduct(S_i, T_j);
-        
-        // Can do this quicker with matrices          
-        Append(~Zs, sub<Z | &cat[Rows(&+[ st[l]*mats[l] : l in [1..#mats]]) : st in Basis(ST)]>);
-      end for;
+    for i in [1..#M`multiplicities], j in [1..#N`multiplicities] do
+      // Find the d = Dimension(S)*Dimension(T) matrices corresponding to the maps M in Hom(R \otimes Z, F^d)
+      mats := AsMatrices(f`maps[i,j,k], 3, 0);
+      
+      if #mats eq 0 then
+        continue;
+      end if;
+      ST := TensorProduct(M`subspaces[i], N`subspaces[j]);
+      
+      // Can do this quicker with matrices          
+      Append(~Zs, sub<Z | &cat[Rows(&+[ st[l]*mats[l] : l in [1..#mats]]) : st in Basis(ST)]>);
     end for;
     Zs := &+Zs;
     
@@ -294,11 +308,10 @@ intrinsic AdjointAction(f::GModDecBil, a::GModDecElt) -> GModDecHom
   A, B := Explode(dom);
   C := Codomain(f);
   
-  H := Group(A);
-  hom_comps := {@ i : i in [1..#MH`subspaces] | not IsZero(uH`elt[i])@};
+  hom_comps := {@ i : i in [1..#A`subspaces] | not IsZero(a`elt[i])@};
   require #hom_comps eq 1: "The element given must lie in the homogeneous component of the trivial module.";
   i := hom_comps[1];
-  require IsIsomorphic(MH`irreducibles[i], TrivialModule(H, BaseRing(MH))): "The element given must lie in the homogeneous component of the trivial module.";
+  require IsIsomorphic(A`irreducibles[i], TrivialModule(Group(A), BaseRing(A))): "The element given must lie in the homogeneous component of the trivial module.";
   
   s := Vector(a`elt[i]);
   
@@ -306,14 +319,15 @@ intrinsic AdjointAction(f::GModDecBil, a::GModDecElt) -> GModDecHom
   // Since U_i is the trivial module, R_k is 1-dimensional for every k.  Moreover, by Schur's lemma, we need only consider when j = k.
   // NB this requires U_j to be absolutely irreducible.
   
-  require forall{U : U in MH`irreducibles | Dimension(EndomorphismAlgebra(U)) eq 1} : "We require the irreducibles to be absolutely irreducible.";
+  require forall{U : U in A`irreducibles | Dimension(EndomorphismAlgebra(U)) eq 1} : "We require the irreducibles to be absolutely irreducible.";
   
   maps := [**];
-  for j -> T_j in B`subspaces do
+  for j in [1..#B`multiplicities] do
     // Find the d = Dimension(S)*Dimension(R) = Dimension(S) matrices corresponding to the maps M in Hom(T \otimes Z, F^d)
     mats := AsMatrices(f`maps[i,j,j], 1, 0);
     
-    hom_j := hom< B`subspaces[j] -> C`subspaces[j] | &+[ s[l]*mats[l] : l in [1..Degree(s)] | not IsZero(s[l]) ] >;
+    hom_j := hom< B`subspaces[j] -> C`subspaces[j] | NumberOfRows(mat) eq 0 select [] else mat
+             where mat := &+[ s[l]*mats[l] : l in [1..Degree(s)] | not IsZero(s[l]) ] >;
     Append(~maps, hom_j);
   end for;
   

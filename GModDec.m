@@ -156,7 +156,7 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
   irreds, mults, dec := GetDecomposition(M);
   
   N`irreducibles := irreds;
-  N`multiplicities := mults;  
+  N`multiplicities := mults;
   N`subspaces := [ VectorSpace(F, d) : d in N`multiplicities ];
 
   N`tensors := [* [* false : j in [1..#N`irreducibles]*] : i in [1..#N`irreducibles]*];
@@ -168,6 +168,26 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
            DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], N`irreducibles[S[i]]) : i in [1..#dec]>);
   
   return N, CoB;
+end intrinsic;
+
+intrinsic DecomposedGModule(G::GrpPerm, F::Fld, S::SeqEnum[RngIntElt]) -> GModDec
+  {
+  Returns the decomposed G-module over F, with the multiplicity of each irreducible given by S.  (Order is determined via IrreducibleModules.)
+  }
+  irreds := IrreducibleModules(G, F);
+  require #S eq #irreds: "The number of multiplicities should be %o", #irreds;
+  
+  M := New(GModDec);
+  M`group := G;
+  M`irreducibles := irreds;
+  M`multiplicities := S;
+  M`subspaces := [ VectorSpace(F, d) : d in M`multiplicities ];
+
+  M`tensors := [* [* false : j in [1..#M`irreducibles]*] : i in [1..#M`irreducibles]*];
+  M`symmetric_squares := [* false : i in [1..#M`irreducibles]*];
+  M`restrictions := AssociativeArray();
+  
+  return M;
 end intrinsic;
 
 intrinsic DecomposedGModule(S::SeqEnum[Mtrx]) -> GModDec
@@ -535,9 +555,10 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
   The tensor product of M and N.
   }
   require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "The two modules must be for the same group and over the same field.";
-  vprint GModDec, 2: "Calculating the GModDec tensor product.";
   
+  vprint GModDec, 2: "Calculating the GModDec tensor product.";
   t := Cputime();
+  
   if Dimension(M) eq 0 or Dimension(N) eq 0 then
     return sub<M|>, _;
   end if;
@@ -548,15 +569,15 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
   irreds_M := {* i^^M`multiplicities[i] : i in [1..no_const]*};
   irreds_N := {* i^^N`multiplicities[i] : i in [1..no_const]*};
 
-  // For each homogeneous component, S_i \otiems U_i and T_j \otimes U_j, their tensor product is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
+  // For each homogeneous component, S_i \otimes U_i and T_j \otimes U_j, their tensor product is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
 
   start_pos := [[] : i in [1..no_const]];
   last := [0 : k in [1..no_const]];
 
-  for i->mult_i in irreds_M, j -> mult_j in irreds_N do
+  for i in Set(irreds_M), j in Set(irreds_N) do
     R := GetTensor(M, i, j);
     start_pos[i,j] := last;
-    last := [ last[k]+mult_i*mult_j*R[k] : k in [1..no_const]];
+    last := [ last[k]+Multiplicity(irreds_M, i)*Multiplicity(irreds_M, j)*R[k] : k in [1..no_const]];
   end for;
 
   Mnew := New(GModDec);
@@ -730,6 +751,146 @@ end intrinsic;
 Gives the index into the symmetric square of a module of dimension n
 
 */
+intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
+  {
+  The symmetric square of M.
+  }
+  vprint GModDec, 2: "Calculating the GModDec tensor product.";
+  t := Cputime();  
+
+  if Dimension(M) eq 0 then
+    return M, _;
+  end if;
+  
+  F := BaseRing(M);
+  no_const := #M`irreducibles;
+  
+  irreds_M := {* i^^M`multiplicities[i] : i in [1..no_const]*};
+  irreds_M_seq := Setseq(IndexedSet(irreds_M));
+  
+  // For each homogeneous component, S_i \otimes U_i and T_j \otimes U_j, their tensor product or symmetric square is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
+  
+  start_pos := [[] : i in [1..no_const]];
+  last := [0 : k in [1..no_const]];
+
+  for ii in [1..#irreds_M_seq], jj in [ii..#irreds_M_seq] do
+    i := irreds_M_seq[ii];
+    mult_i := Multiplicity(irreds_M, i);
+
+    if ii eq jj then
+      R2 := GetS2(M, i);
+      R := GetTensor(M, i, i);
+      
+      start_pos[i, i] := last;
+      last := [ last[k]+ mult_i*R2[k] + (mult_i*(mult_i-1) div 2) *R[k] : k in [1..no_const]];
+    else
+      j := irreds_M_seq[jj];
+      mult_j := Multiplicity(irreds_M, j);
+      
+      R := GetTensor(M, i, j);
+      start_pos[i,j] := last;
+      last := [ last[k]+mult_i*mult_j*R[k] : k in [1..no_const]];
+    end if;
+  end for;
+  
+  Mnew := New(GModDec);
+  Mnew`group := M`group;
+  Mnew`irreducibles := M`irreducibles;
+  
+  Mnew`tensors := M`tensors;
+  Mnew`symmetric_squares := M`symmetric_squares;
+  Mnew`restrictions := M`restrictions;
+  
+  Mnew`multiplicities := last;
+  Mnew`subspaces := [ VectorSpace(F, d) : d in Mnew`multiplicities ];
+  vprintf GModDec, 4: "Time taken to build the GModDec symmetric square: %o.\n", Cputime(t);
+  
+  vprint GModDec, 2: "Calculating the isomorphism.";
+  tt := Cputime();
+  Cat := TensorCategory([1,1,1,-1], {{3},{2},{1},{0}});
+  
+  bilmaps := [*[**] : i in [1..no_const] *];
+  start := [0 : k in [1..no_const]];
+  for i in [1..no_const], j in [i..no_const] do
+    mult_i := Multiplicity(irreds_M, i);
+    mult_j := Multiplicity(irreds_M, j);
+    if mult_i eq 0 or mult_j eq 0 then
+      assert not IsDefined(start_pos[i], j);
+    else
+      start := start_pos[i,j];
+    end if;
+    
+    if i eq j then // we need to take the symmetric square
+      mult_R2 := GetS2(M, i);
+      mult_R := GetTensor(M, i, i);
+      
+      assert forall{ k : k in [1..no_const] | mult_R2[k] le mult_R[k]};
+      // We will consider R2[k] to be embedded in R[k]
+      R := [ VectorSpace(F, d) : d in mult_R];
+      
+      // We build a matrix for the the maps
+      // for each k, we want a map from the ordered basis of (R \otimes S) \otimes T to Z
+      // 
+      injs := [* *];
+      for k in [1..no_const] do
+        Im := VectorSpace(F, mult_i^2*mult_R[k]);
+        pairs := [];
+        Mnew_count:= start[k];
+        Im_count := 0;
+        for a in [1..Dimension(R[k])], b in [1..mult_i], c in [b..mult_i] do
+          v := TensorProduct(TensorProduct(R[k].a, M`subspaces[i].b), M`subspaces[i].c);
+          if b eq c then
+            // This is a symmetric square
+            if a le R2[k] then
+              Mnew_count +:= 1;
+              Append(~pairs, <v, Mnew`subspaces[k].Mnew_count>);
+            else // this does the projection of the remainder of R to zero
+              Append(~pairs, <v, Mnew`subspaces[k]!0>);
+            end if;
+          else // so b < c
+            // This is a tensor product
+            Mnew_count +:= 1;
+            Append(~pairs, <v, Mnew`subspaces[k].Mnew_count>);
+            v := TensorProduct(TensorProduct(R[k].a, M`subspaces[i].c), M`subspaces[i].b);
+            Append(~pairs, <v, Mnew`subspaces[k].Mnew_count>);
+          end if;
+        end for;
+        Append(~injs, hom< Im-> Mnew`subspaces[k] | pairs>);
+      end for;
+      
+      bilmaps[i,i] := [* Tensor([*R[k], M`subspaces[i], M`subspaces[i], Mnew`subspaces[k]*],
+                     func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
+                        : k in [1..no_const]*];
+      
+    else // This is just the tensor case
+      mult_R := GetTensor(M, i, j);
+      R := [ VectorSpace(F, d) : d in mult_R];
+      
+      injs := [* hom< Im-> Mnew`subspaces[k] |
+                                [<Im.l, Mnew`subspaces[k].(l+start[k])> : l in [1..Dimension(Im)]]>
+                        where Im := VectorSpace(F, mult_i*mult_j*mult_R[k])
+                        : k in [1..no_const]*];
+      
+      bilmaps[i,j] := [* Tensor([*R[k], M`subspaces[i], M`subspaces[j], Mnew`subspaces[k]*],
+                     func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
+                        : k in [1..no_const]*];
+      bilmaps[j,i] := [* Tensor([*R[k], M`subspaces[j], M`subspaces[i], Mnew`subspaces[k]*],
+                     func<x | TensorProduct(TensorProduct(x[1],x[3]),x[2])@injs[k]>, Cat)
+                        : k in [1..no_const]*];
+    end if;
+  end for;
+  
+  sym_map := New(GModDecBil);
+  sym_map`domain := [* M, M *];
+  sym_map`codomain := Mnew;
+  sym_map`maps := bilmaps;
+
+  vprintf GModDec, 4: "Time taken to find the isomorphism: %o.\n", Cputime(tt);
+  
+  vprintf GModDec, 4: "Total time: %o.\n", Cputime(t);
+  return Mnew, sym_map;
+end intrinsic;
+
 ijpos := function(i,j,n)
   if i le j then
     return &+[ n+1 -k : k in [0..i-1]] -n +j-i;
@@ -738,7 +899,7 @@ ijpos := function(i,j,n)
   end if;
 end function;
 
-intrinsic SymmetricSquare(M::GModDec) -> GModDec, SeqEnum
+intrinsic SymmetricSquareOld(M::GModDec) -> GModDec, SeqEnum
   {
   The symmetric square of M.
   }
@@ -934,13 +1095,15 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
   // We first build the lifts for the modules
   // Could make this a sequence at the expense of having to build it all at once and making the code really complicated.
   all_lifts := [**];
-  for j -> T_j in Mnew`subspaces do
+  for j in [1..#Mnew`irreducibles] do
+    T_j := Mnew`subspaces[j];
     if Dimension(T_j) eq 0 then
       all_lifts[j] := [* hom< T_j -> S_i | > : S_i in M`subspaces*];
       continue;
     end if;
     lifts := [**];
-    for i -> S_i in M`subspaces do
+    for i in [1..#M`irreducibles] do
+      S_i := M`subspaces[i];
       if Dimension(S_i) eq 0 then
         lifts[i] := hom< T_j -> S_i | ZeroMatrix(F, Dimension(T_j), Dimension(S_i))>;
       else
@@ -966,14 +1129,15 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
     We calculate the inverse of each of these and multiply.
     */
     // First get all the CoB matrices
-    CoBs := [* d ne 0 select CoB where _, CoB := GetRestriction(M, i, H) else [] : i -> d in M`multiplicities*];
+    CoBs := [* M`multiplicities[i] ne 0 select CoB where _, CoB := GetRestriction(M, i, H) else [] : i in [1..#M`irreducibles]*];
 
-    Dinv := DiagonalJoin(< CoBs[i] : j in [1..d], i -> d in M`multiplicities>);
+    Dinv := DiagonalJoin(< CoBs[i] : j in [1..M`multiplicities[i]], i in [1..#M`irreducibles]>);
     
     Hhomblocks := [ i eq 1 select 0 else Self(i-1) + Dimension(Mnew`irreducibles[i-1])*Mnew`multiplicities[i-1] : i in [1..#Mnew`irreducibles]];
     
     perm := [];
-    for i -> d in M`multiplicities do
+    for i in [1..#M`irreducibles] do
+      d := M`multiplicities[i];
       if d eq 0 then
         continue;
       end if;
@@ -999,7 +1163,7 @@ intrinsic LiftModule(M::GModDec, lifts::Rec) -> GModDec
   }
   require M subset lifts`domain: "The module given is not in the domain of the lift.";
   N := lifts`image;
-  return sub< N | [ &+[ Msub@lifts`lifts[j,i] : j -> Msub in M`subspaces] : i in [1..#N`irreducibles]]>;
+  return sub< N | [ &+[ M`subspaces[j]@lifts`lifts[j,i] : j in [1..#M`irreducibles]] : i in [1..#N`irreducibles]]>;
 end intrinsic;
 
 intrinsic ChangeField(M::GModDec, F::Fld) -> GModDec
@@ -1196,7 +1360,6 @@ intrinsic Hash(x::GModDecElt) -> RngIntElt
   return Hash(<Group(x`parent), x`elt>);
 end intrinsic;
 
-// Is this really needed?
 intrinsic Eltseq(x::GModDecElt) -> SeqEnum
   {
   Returns the sequence of coefficients of x`elt.
