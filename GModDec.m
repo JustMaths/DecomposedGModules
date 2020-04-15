@@ -340,10 +340,6 @@ intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, AlgMatElt, AlgMatElt, Al
   // Can magma even do this???
   // For now, we return a sequence of matrices.  Should really turn them back to maps to match ModGrp and MudTupFld, but we will use matrices anyway.
   
-<<<<<<< HEAD
-=======
-  // make the injection and projection maps use GModDecMap
->>>>>>> 07358522f397c0a4581ac8f33219499c7d1c8371
   return Mnew, inj1, inj2, proj1, proj2;
 end intrinsic;
 
@@ -376,10 +372,6 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   // Can magma even do this???
   // For now, we return a sequence of matrices.  Should really turn them back to maps to match ModGrp and MudTupFld, but we will use matrices anyway.
   
-<<<<<<< HEAD
-=======
-  // make the injection and projection maps use GModDecMap
->>>>>>> 07358522f397c0a4581ac8f33219499c7d1c8371
   return Mnew, injs, projs;
 end intrinsic;
 
