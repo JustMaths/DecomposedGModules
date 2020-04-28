@@ -61,7 +61,7 @@ intrinsic Image(f::GModDecHom) -> GModDec
   The image of the map f.
   }
   ims := [ Image(f`maps[i]) : i in [1..#f`maps]];
-  return sub<f`codomain | ims>;
+  return sub<Codomain(f) | ims>;
 end intrinsic;
 
 intrinsic Kernel(f::GModDecHom) -> GModDec
@@ -69,7 +69,7 @@ intrinsic Kernel(f::GModDecHom) -> GModDec
   The kernel of the map f.
   }
   kers := [ Kernel(f`maps[i]) : i in [1..#f`maps]];
-  return sub<f`domain | kers>;
+  return sub<Domain(f) | kers>;
 end intrinsic;
 
 intrinsic IsIdentity(f::GModDecHom) -> BoolElt
@@ -100,11 +100,11 @@ intrinsic DecomposedGModuleHomomorphism(M::GModDec, N::GModDec, S::[Map]) -> GMo
   Create a homomorphism between M and N given by a sequence of maps.
   }
   require BaseRing(M) eq BaseRing(N) and Group(M) eq Group(N): "The domain and image modules are not compatible.";
-  require #S eq #M`irreducibles: "The number of maps given is not correct.";
-  require forall{ i : i in [1..#M`irreducibles] | Domain(S[i]) eq M`subspaces[i]}: "The domains of the given maps are not the homogeneous components of the given domain module.";
-  require forall{ i : i in [1..#N`irreducibles] | Codomain(S[i]) subset Generic(N`subspaces[i])}: "The codomains of the given maps are not contained in the homogeneous components of the given image module.";
+  require #S eq #Irreducibles(M): "The number of maps given is not correct.";
+  require forall{ i : i in [1..#Irreducibles(M)] | Domain(S[i]) eq Subspace(M, i)}: "The domains of the given maps are not the homogeneous components of the given domain module.";
+  require forall{ i : i in [1..#Irreducibles(N)] | Codomain(S[i]) subset Generic(Subspace(N, i))}: "The codomains of the given maps are not contained in the homogeneous components of the given image module.";
   // There is a bug with magma not giving the correct image for a map which is the composite of two maps.
-  require forall{ i : i in [1..#N`irreducibles] | sub<Image(S[i])|[v@S[i] : v in Basis(Domain(S[i]))]> subset N`subspaces[i]}: "The image of the given maps are not contained in the homogeneous components of the given image module.";
+  require forall{ i : i in [1..#Irreducibles(N)] | sub<Image(S[i])|[v@S[i] : v in Basis(Domain(S[i]))]> subset Subspace(N, i)}: "The image of the given maps are not contained in the homogeneous components of the given image module.";
   return CreateMap(M, N, S);
 end intrinsic;
 
@@ -124,7 +124,7 @@ intrinsic '*'(f::GModDecHom, g::GModDecHom) -> GModDecHom
   Composition of f and g.
   }
   require Image(f) subset g`domain: "The image of one map is not contained in the domain of the other.";
-  return CreateMap(f`domain, g`codomain, [ f`maps[i]*g`maps[i] : i in [1..#Domain(f)`irreducibles]]);
+  return CreateMap(Domain(f), Codomain(g), [ f`maps[i]*g`maps[i] : i in [1..#Irreducibles(Domain(f))]]);
 end intrinsic;
 
 intrinsic Inverse(f::GModDecHom) -> GModDecHom
@@ -132,7 +132,7 @@ intrinsic Inverse(f::GModDecHom) -> GModDecHom
   The inverse of f.
   }
   invs := [ Inverse(f`maps[i]) : i in [1..#f`maps]];
-  return CreateMap(Image(f), f`domain, invs);
+  return CreateMap(Image(f), Domain(f), invs);
 end intrinsic;
 /*
 
@@ -143,12 +143,12 @@ intrinsic '@'(m::GModDecElt, f::GModDecHom) -> GModDecElt
   {
   Apply f to m.
   }
-  require m in f`domain: "The element is not in the domain of the map.";
+  require m in Domain(f): "The element is not in the domain of the map.";
   M := Parent(m);
-  N := Generic(f`codomain);
-  ff := [* Transpose(Matrix(BaseRing(M), M`multiplicities[i], N`multiplicities[i],
-                  [ M`subspaces[i].j@f`maps[i] : j in [1..Dimension(M`subspaces[i])]]))
-               : i in [1..#M`irreducibles] *];
+  N := Generic(Codomain(f));
+  ff := [* Transpose(Matrix(BaseRing(M), Multiplicity(M, i), Multiplicity(N, i),
+                  [ Subspace(M, i).j@f`maps[i] : j in [1..Dimension(Subspace(M, i))]]))
+               : i in [1..#Irreducibles(M)] *];
   
   // We might be trying to apply the zero map and then we get incompatible degrees
   apply_matrix := function(mat, x)
@@ -192,16 +192,17 @@ intrinsic '@'(M::GModDec, f::GModDecHom) -> GModDec
   {
   Apply f to M.
   }
-  require M`group eq f`domain`group and BaseRing(M) eq BaseRing(f`domain): "The module is not in the domain of the map.";
+  require Group(M) eq Group(Domain(f)) and BaseRing(M) eq BaseRing(Domain(f)): "The module is not in the domain of the map.";
 
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   Mnew`restrictions := M`restrictions;
 
-  Mnew`subspaces := [ M`subspaces[i]@f`maps[i] : i in [1..#f`maps]];
+  Mnew`subspaces := [ Subspace(M, i)@f`maps[i] : i in [1..#f`maps]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   return Mnew;
 end intrinsic;
@@ -220,9 +221,9 @@ intrinsic MapToMatrix(f::GModDecHom) -> ModMatFldElt
   M := Domain(f);
   F := BaseRing(M);
   
-  irredbas := < M`multiplicities[i] eq 0 select ZeroMatrix(F, 0,Dimension(M`irreducibles[i]))
-                 else BasisMatrix(VectorSpace(M`irreducibles[i]))
-                    : i in [1..#M`irreducibles]>;
+  irredbas := < Multiplicity(M, i) eq 0 select ZeroMatrix(F, 0, Dimension(Irreducibles(M)[i]))
+                 else BasisMatrix(VectorSpace(Irreducibles(M)[i]))
+                    : i in [1..#Irreducibles(M)]>;
   maps := < Dimension(Domain(f`maps[i])) eq 0 select ZeroMatrix(F, 0, Dimension(Image(f`maps[i])))
              else Dimension(Image(f`maps[i])) eq 0 select ZeroMatrix(F, Dimension(Domain(f`maps[i])), 0)
              else Matrix([v@f`maps[i] : v in Basis(Domain(f`maps[i]))])
@@ -268,24 +269,23 @@ intrinsic SubmoduleImage(M::GModDec, N::GModDec, f::GModDecBil) -> GModDec
   {
   Given a bilinear map f: A \otimes B -> C and submodules M \leq A and N \leq B, return the submodule f(M, N).
   }
-  dom := f`domain;
-  require M subset dom[1] and N subset dom[2]: "The modules are not elements of the domain of the bilinear map.";
+  require M subset Domain(f)[1] and N subset Domain(f)[2]: "The modules are not elements of the domain of the bilinear map.";
   
   C := Codomain(f);
   
   Im := [ PowerStructure(Type(M`subspaces[1])) | ];
-  for k in [1..#C`multiplicities] do
+  for k in [1..#Multiplicities(C)] do
     Z := C`subspaces[k];
     // We take the subspaces S_i and T_j and decompose our tensor
     Zs := [ Parent(Z) |];
-    for i in [1..#M`multiplicities], j in [1..#N`multiplicities] do
+    for i in [1..#Multiplicities(M)], j in [1..#Multiplicities(N)] do
       // Find the d = Dimension(S)*Dimension(T) matrices corresponding to the maps M in Hom(R \otimes Z, F^d)
       mats := AsMatrices(f`maps[i,j,k], 3, 0);
       
       if #mats eq 0 then
         continue;
       end if;
-      ST := TensorProduct(M`subspaces[i], N`subspaces[j]);
+      ST := TensorProduct(Subspace(M, i), Subspace(N, j));
       
       // Can do this quicker with matrices          
       Append(~Zs, sub<Z | &cat[Rows(&+[ st[l]*mats[l] : l in [1..#mats]]) : st in Basis(ST)]>);
@@ -302,16 +302,16 @@ intrinsic AdjointAction(f::GModDecBil, a::GModDecElt) -> GModDecHom
   {
   Given a bilinear map from A \otimes B -> C and an element a of A, we give a map from B to C given by the adjoint action of a.  That is, the action x \maptso a \otimes x.
   }
-  dom := f`domain;
+  dom := Domain(f);
   require a in dom[1]: "The element is not in the domain of the bilinear map.";
   
   A, B := Explode(dom);
   C := Codomain(f);
   
-  hom_comps := {@ i : i in [1..#A`subspaces] | not IsZero(a`elt[i])@};
+  hom_comps := {@ i : i in [1..#Subspaces(A)] | not IsZero(a`elt[i])@};
   require #hom_comps eq 1: "The element given must lie in the homogeneous component of the trivial module.";
   i := hom_comps[1];
-  require IsIsomorphic(A`irreducibles[i], TrivialModule(Group(A), BaseRing(A))): "The element given must lie in the homogeneous component of the trivial module.";
+  require IsIsomorphic(Irreducibles(A)[i], TrivialModule(Group(A), BaseRing(A))): "The element given must lie in the homogeneous component of the trivial module.";
   
   s := Vector(a`elt[i]);
   
@@ -319,14 +319,14 @@ intrinsic AdjointAction(f::GModDecBil, a::GModDecElt) -> GModDecHom
   // Since U_i is the trivial module, R_k is 1-dimensional for every k.  Moreover, by Schur's lemma, we need only consider when j = k.
   // NB this requires U_j to be absolutely irreducible.
   
-  require forall{U : U in A`irreducibles | Dimension(EndomorphismAlgebra(U)) eq 1} : "We require the irreducibles to be absolutely irreducible.";
+  require forall{U : U in Irreducibles(A) | Dimension(EndomorphismAlgebra(U)) eq 1} : "We require the irreducibles to be absolutely irreducible.";
   
   maps := [**];
-  for j in [1..#B`multiplicities] do
+  for j in [1..#Multiplicities(B)] do
     // Find the d = Dimension(S)*Dimension(R) = Dimension(S) matrices corresponding to the maps M in Hom(T \otimes Z, F^d)
     mats := AsMatrices(f`maps[i,j,j], 1, 0);
     
-    hom_j := hom< B`subspaces[j] -> C`subspaces[j] | NumberOfRows(mat) eq 0 select [] else mat
+    hom_j := hom< Subspace(B, j) -> Subspace(C, j) | NumberOfRows(mat) eq 0 select [] else mat
              where mat := &+[ s[l]*mats[l] : l in [1..Degree(s)] | not IsZero(s[l]) ] >;
     Append(~maps, hom_j);
   end for;

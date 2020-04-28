@@ -30,6 +30,7 @@ declare type GModDec[GModDecElt];
 
 declare attributes GModDec:
   group,              // The group G
+  ring,               // The base ring of M
   irreducibles,       // A SeqEnum of all the irreducibles for the group G
   multiplicities,     // A SeqEnum of the multiplicities of each irreducible
   subspaces,          // A SeqEnum of subspaces of the corresponding multiplicity
@@ -61,42 +62,90 @@ intrinsic Group(M::GModDec) -> Grp
   return M`group;
 end intrinsic;
 
+intrinsic BaseRing(M::GModDec) -> Rng
+  {
+  Base ring of the module.
+  }
+  return M`ring;
+end intrinsic;
+
+intrinsic Irreducibles(M::GModDec) -> SeqEnum
+  {
+  Returns the irreducibles for G, where M is a G-module.
+  }
+  return M`irreducibles;
+end intrinsic;
+
+intrinsic Multiplicities(M::GModDec) -> SeqEnum
+  {
+  Returns the multiplicities of each irreducible for G in M.
+  }
+  return M`multiplicities;
+end intrinsic;
+
+intrinsic Multiplicity(M::GModDec, i::RngIntElt) -> RngIntElt
+  {
+  The multiplicity of the ith irreducible in M.
+  }
+  return M`multiplicities[i];
+end intrinsic;
+
+intrinsic Multiplicity(M::GModDec, U::ModGrp) -> RngIntElt
+  {
+  The multiplicity of U in M.
+  }
+  irreds := Irreducibles(M);
+  assert exists(i){i : i in [1..#irreds] | IsIsomorphic(U, irreds[i])};
+  return Multiplicity(M, i);
+end intrinsic;
+
+intrinsic Subspaces(M::GModDec) -> SeqEnum
+  {
+  Returns the sequences of the subspaces for the decompositon of M.
+  }
+  return M`subspaces;
+end intrinsic;
+
+intrinsic Subspace(M::GModDec, i::RngIntElt) -> SeqEnum
+  {
+  Returns subspaces for the ith homogeneous component in the decompositon of M.
+  }
+  return M`subspaces[i];
+end intrinsic;
+
 intrinsic Dimension(M::GModDec) -> RngIntElt
   {
   Dimension of the module.
   }
-  return forall{m : m in M`multiplicities | m eq 0} select 0 else 
-         &+[ M`multiplicities[i]*Dimension(M`irreducibles[i]) : i in [1..#M`multiplicities] | M`multiplicities[i] ne 0];
+  mults := Multiplicities(M);
+  irreds := Irreducibles(M);
+  return forall{m : m in mults | m eq 0} select 0 else 
+         &+[ mults[i]*Dimension(irreds[i]) : i in [1..#irreds] | mults[i] ne 0];
 end intrinsic;
 
 intrinsic OverDimension(M::GModDec) -> RngIntElt
   {
   Dimension of the full module containing M.
   }
-  dims := [OverDimension(V) : V in M`subspaces];
+  dims := [OverDimension(V) : V in Subspaces(M)];
+  irreds := Irreducibles(M);
   return forall{m : m in dims | m eq 0} select 0 else 
-         &+[ dims[i]*Dimension(M`irreducibles[i]) : i in [1..#M`irreducibles] | dims[i] ne 0];
-end intrinsic;
-
-intrinsic BaseRing(M::GModDec) -> Rng
-  {
-  Base ring of the module.
-  }
-  return BaseRing(M`irreducibles[1]);
-end intrinsic;
-
-intrinsic ConstituentSupport(M::GModDec) -> SeqEnum
-  {
-  The indices of the irreducibles which M is supported on.
-  }
-  return [ i : i in [1..#M`irredicubles] | M`multiplicities[i] ne 0];
+         &+[ dims[i]*Dimension(irreds[i]) : i in [1..#irreds] | dims[i] ne 0];
 end intrinsic;
 
 intrinsic GModuleAction(M::GModDec) -> Map
   {
   Returns the action homomorphism of M
   }
-  return hom< Group(M) -> GL(Dimension(M), BaseRing(M)) | g:-> DiagonalJoin(< g@GModuleAction(M`irreducibles[i]) : j in [1..M`multiplicities[i]], i in [1..#M`irreducibles]>)>;  
+  irreds := Irreducibles(M);
+  return hom< Group(M) -> GL(Dimension(M), BaseRing(M)) | g:-> DiagonalJoin(< g@GModuleAction(irreds[i]) : j in [1..Multiplicities(M, i)], i in [1..#irreds]>)>;  
+end intrinsic;
+
+intrinsic Hash(M::GModDec) -> RngIntElt
+  {
+  The hash of the module.
+  }
+  return Hash(<Group(M), BaseRing(M), Subspaces(M)>);
 end intrinsic;
 /*
 
@@ -152,20 +201,21 @@ intrinsic DecomposedGModule(M::ModGrp) -> GModDec, AlgMatElt
   
   N := New(GModDec);
   N`group := G;
+  N`ring := F;
   
   irreds, mults, dec := GetDecomposition(M);
   
   N`irreducibles := irreds;
   N`multiplicities := mults;
-  N`subspaces := [ VectorSpace(F, d) : d in N`multiplicities ];
+  N`subspaces := [ VectorSpace(F, d) : d in mults ];
 
-  N`tensors := [* [* false : j in [1..#N`irreducibles]*] : i in [1..#N`irreducibles]*];
-  N`symmetric_squares := [* false : i in [1..#N`irreducibles]*];
+  N`tensors := [* [* false : j in [1..#irreds]*] : i in [1..#irreds]*];
+  N`symmetric_squares := [* false : i in [1..#irreds]*];
   N`restrictions := AssociativeArray();
   
-  S := Sort(MultisetToSequence({* i^^N`multiplicities[i] : i in [1..#N`irreducibles]*}));
+  S := Sort(MultisetToSequence({* i^^mults[i] : i in [1..#irreds]*}));
   CoB := Matrix([ VectorSpace(M) | M!u : u in Basis(U), U in dec])^-1 *
-           DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], N`irreducibles[S[i]]) : i in [1..#dec]>);
+           DiagonalJoin(< iso where so, iso := IsIsomorphic(dec[i], irreds[S[i]]) : i in [1..#dec]>);
   
   return N, CoB;
 end intrinsic;
@@ -181,10 +231,10 @@ intrinsic DecomposedGModule(G::GrpPerm, F::Fld, S::SeqEnum[RngIntElt]) -> GModDe
   M`group := G;
   M`irreducibles := irreds;
   M`multiplicities := S;
-  M`subspaces := [ VectorSpace(F, d) : d in M`multiplicities ];
+  M`subspaces := [ VectorSpace(F, d) : d in S ];
 
-  M`tensors := [* [* false : j in [1..#M`irreducibles]*] : i in [1..#M`irreducibles]*];
-  M`symmetric_squares := [* false : i in [1..#M`irreducibles]*];
+  M`tensors := [* [* false : j in [1..#irreds]*] : i in [1..#irreds]*];
+  M`symmetric_squares := [* false : i in [1..#irreds]*];
   M`restrictions := AssociativeArray();
   
   return M;
@@ -210,22 +260,26 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
   if #X eq 1 and Type(X[1]) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X[1] | Type(x) in { GModDec, ModTupFld, GModDecElt, SeqEnum, ModTupFldElt, ModGrpElt}} then
     X := X[1];
   end if;
+  irreds := Irreducibles(M);
+  mults := Multiplicities(M);
+  subs := Subspaces(M);
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := irreds;
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   Mnew`restrictions := M`restrictions;
   
-  abs_irred := [ Dimension(EndomorphismAlgebra(U)) eq 1 : U in M`irreducibles];
+  abs_irred := [ Dimension(EndomorphismAlgebra(U)) eq 1 : U in irreds];
   
   if false in abs_irred then
     print "WARNING - one of the irreducibles is not absolutely irreducible.  The answer may well be incorrect!";
   end if;
 
   if #X eq 0 then
-     Mnew`subspaces := [ sub< Generic(U)|> : U in M`subspaces ];
+     Mnew`subspaces := [ sub< Generic(U)|> : U in subs ];
   elif Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq SeqEnum and #x eq OverDimension(M) or Type(x) in {ModTupFldElt, ModGrpElt} and Degree(x) eq OverDimension(M)} then
     
     if Type(X) in {SetEnum, SetIndx} then
@@ -233,16 +287,16 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
     end if;
     bigmat := Matrix(X);
     
-    dims := [ Dimension(U) : U in M`irreducibles];
-    offset := [ i eq 1 select 0 else Self(i-1)+dims[i-1]*M`multiplicities[i-1] : i in [1..#M`irreducibles]];
+    dims := [ Dimension(U) : U in irreds];
+    offset := [ i eq 1 select 0 else Self(i-1)+dims[i-1]*mults[i-1] : i in [1..#irreds]];
     
-    mats := [* VerticalJoin(<Submatrix(bigmat, [1..#X], [ offset[i] + (k-1)*dims[i] + j : k in [1..M`multiplicities[i]]] ) : j in [1..dims[i]]>)
-     : i in [1..#M`irreducibles] *];
+    mats := [* VerticalJoin(<Submatrix(bigmat, [1..#X], [ offset[i] + (k-1)*dims[i] + j : k in [1..mults[i]]] ) : j in [1..dims[i]]>)
+     : i in [1..#irreds] *];
     
-    Mnew`subspaces := [ sub< Generic(M`subspaces[i]) | Rows(mats[i])> : i in [1..#M`irreducibles]];
+    Mnew`subspaces := [ sub< Generic(subs[i]) | Rows(mats[i])> : i in [1..#irreds]];
   elif Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq GModDec} then
     return &+X;
-  elif Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq ModTupFld} and #X eq #M`irreducibles and forall{ i : i in [1..#X] | OverDimension(X[i]) eq OverDimension(M`subspaces[i]) and X[i] subset M`subspaces[i]} then
+  elif Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq ModTupFld} and #X eq #irreds and forall{ i : i in [1..#X] | OverDimension(X[i]) eq OverDimension(subs[i]) and X[i] subset subs[i]} then
     Mnew`subspaces := X;
   elif (Type(X) in {SeqEnum, SetEnum, SetIndx} and forall{x : x in X | Type(x) eq GModDecElt})
         or (#X eq 1 and IsCoercible(M, X[1])) then
@@ -250,7 +304,7 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
     XX := { M | x : x in X };
 
     // We want to take the column span of each element
-    Mnew`subspaces := [ sub< Generic(M`subspaces[i]) | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
+    Mnew`subspaces := [ sub< Generic(subs[i]) | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#irreds]];
   else
     require false: "RHS is not understood.";
   end if;
@@ -259,8 +313,8 @@ intrinsic SubConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
 
   // Have to do Morphisms rather than use the inclusion map coming from the sub constructor otherwise Image is not computable sometimes!
   /*
-  incs := [ hom<Mnew`subspaces[i]-> M`subspaces[i] | Rows(Morphism(Mnew`subspaces[i], M`subspaces[i]))>
-             : i in [1..#M`irreducibles]];
+  incs := [ hom<Mnew`subspaces[i]-> subs[i] | Rows(Morphism(Mnew`subspaces[i], subs[i]))>
+             : i in [1..#irreds]];
   */
   // The second component returns a map, not a GModDecHom.  It can be applied to elements and knows the domain and codomain, but not the image and you can't access the GModDecHom structure.  Don't know how to make this work!
   return Mnew; //, Hom(Mnew, M, incs);
@@ -271,9 +325,10 @@ intrinsic Morphism(N::GModDec, M::GModDec) -> GModDecHom
   If N was created as a submodule of M, return the inclusion homomorphism.
   }
   require N subset M: "The second module is a not a subset of the first.";
+  Msubs := Subspaces(M);
+  Nsubs := Subspaces(N);
   
-  incs := [ hom<N`subspaces[i]-> M`subspaces[i] | Rows(Morphism(N`subspaces[i], M`subspaces[i]))>
-             : i in [1..#M`irreducibles]];
+  incs := [ hom<Nsubs[i]-> Msubs[i] | Rows(Morphism(Nsubs[i], Msubs[i]))> : i in [1..#Msubs]];
   return Hom(N, M, incs);
 end intrinsic;
 
@@ -289,13 +344,14 @@ intrinsic QuoConstructor(M::GModDec, X::.) -> GModDec, GModDecHom
   XX := { M | x : x in X };
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   Mnew`restrictions := M`restrictions;
   
-  quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
+  quos := [ < Q, psi> where Q, psi := quo< Subspace(M, i) | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#Multiplicities(M)]];
   
   Mnew`subspaces := [ t[1] : t in quos];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -322,13 +378,14 @@ intrinsic QuoMap(M::GModDec, X::.) -> GModDecHom
   XX := { M | x : x in X };
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   Mnew`restrictions := M`restrictions;
   
-  quos := [ < Q, psi> where Q, psi := quo< M`subspaces[i] | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#M`irreducibles]];
+  quos := [ < Q, psi> where Q, psi := quo< Subspace(M, i) | Flat([ Rows(Transpose(x`elt[i])) : x in XX])> : i in [1..#Multiplicities(M)]];
   
   Mnew`subspaces := [ t[1] : t in quos];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
@@ -385,17 +442,20 @@ intrinsic DirectSum(M::GModDec, N::GModDec) -> GModDec, GModDecHom, GModDecHom, 
   }
   F := BaseRing(M);
   require Group(M) eq Group(N) and F eq BaseRing(N): "The two modules must be for the same group and over the same field.";
-  Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  irreds := Irreducibles(M);
   
-  Mnew`tensors := [* Merge([* M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew := New(GModDec);
+  Mnew`group := Group(M);
+  Mnew`ring := F;
+  Mnew`irreducibles := irreds;
+  
+  Mnew`tensors := [* Merge([* M`tensors[i], N`tensors[i]*]) : i in [1..#irreds]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares *]);
   Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions *]);
   
   sums := [ < V, inj1, inj2, proj1, proj2 > 
-      where V, inj1, inj2, proj1, proj2 := DirectSum(M`subspaces[i], N`subspaces[i])
-                   : i in [1..#M`irreducibles]];
+      where V, inj1, inj2, proj1, proj2 := DirectSum(Subspaces(M, i), Subspaces(N, i))
+                   : i in [1..#irreds]];
   
   // The DirectSum(U, V) above returns answer that is a subspace of the direct sum of ambient spaces of U and V.  We don't want this so we need to build some maps and redefine the subspaces.
   
@@ -418,19 +478,21 @@ intrinsic DirectSum(Q::SeqEnum[GModDec]) -> GModDec, SeqEnum, SeqEnum
   }
   require #Q ne 0: "The sequence of Gmodules for the direct sum is empty.";
   F := BaseRing(Q[1]);
+  irreds := Irreducibles(Q[1]);
   
   require forall{ M : M in Q | Group(M) eq Group(Q[1])} and forall{ M : M in Q | BaseRing(M) eq F}: "The modules must be for the same group and over the same field.";
   Mnew := New(GModDec);
-  Mnew`group := Q[1]`group;
-  Mnew`irreducibles := Q[1]`irreducibles;
+  Mnew`group := Group(Q[1]);
+  Mnew`ring := F;
+  Mnew`irreducibles := irreds;
   
-  Mnew`tensors := [* Merge([*M`tensors[i] : M in Q*]) : i in [1..#Mnew`irreducibles]*];
+  Mnew`tensors := [* Merge([*M`tensors[i] : M in Q*]) : i in [1..#irreds]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares : M in Q*]);
   Mnew`restrictions := MergeAssoc([* M`restrictions : M in Q*]);
   
   sums := [ < V, injs, projs > 
-      where V, injs, projs := DirectSum([ M`subspaces[i] : M in Q])
-                   : i in [1..#Mnew`irreducibles]];
+      where V, injs, projs := DirectSum([ Subspace(M, i) : M in Q])
+                   : i in [1..#irreds]];
   
   // The DirectSum above returns answer that is a subspace of the direct sum of ambient spaces.  We don't want this so we need to build some maps and redefine the subspaces.
   
@@ -460,11 +522,12 @@ Same for symmetric square
 */
 function GetTensor(M, i, j)
   t := Cputime();
+  irreds := Irreducibles(M);
   
   if j lt i then
     // only calculate the isomorphism one way round
     S, iso := GetTensor(M, j, i);
-    seq := [ [k,l] : k in [1..Dimension(M`irreducibles[i])], l in [1..Dimension(M`irreducibles[j])]];
+    seq := [ [k,l] : k in [1..Dimension(irreds[i])], l in [1..Dimension(irreds[j])]];
     Sort(~seq, ~perm);
     P := PermutationMatrix(BaseRing(M), perm);
     
@@ -475,22 +538,22 @@ function GetTensor(M, i, j)
   if Type(M`tensors[i,j]) eq BoolElt then
     vprint GModDec, 2: "Calculating tensor.";
 
-    UxV := TensorProduct(M`irreducibles[i], M`irreducibles[j]);
+    UxV := TensorProduct(irreds[i], irreds[j]);
     
     if BaseRing(M) eq Rationals() then
       T := RationalCharacterTable(Group(M));
       char := Character(UxV);
       S := ChangeUniverse(Decomposition(T, char), Integers());
-      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*}));
+      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#irreds]*}));
     else
       dec := Decomposition(UxV);
-      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *}));
-      S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
+      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#irreds] | IsIsomorphic(U, irreds[i])} : U in dec *}));
+      S := [ Multiplicity(SS, i) : i in [1..#irreds]];
       // This assumes that the field is the splitting field for the characters of G
       T := CharacterTable(Group(M));
     end if;
     
-    N := DirectSum([ M`irreducibles[i] : i in SS]);
+    N := DirectSum([ irreds[i] : i in SS]);
     
     /*
     tt := Cputime();
@@ -501,10 +564,10 @@ function GetTensor(M, i, j)
     // I think using characters will be quicker
     tt := Cputime();
     inds := IndecomposableSummands(UxV);
-    charpos := [Position(T,Character(U)) : U in inds];
+    charpos := [Position(T, Character(U)) : U in inds];
     Sort(~charpos, ~perm);
     inds := PermuteSequence(inds, perm);
-    iso := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(M`irreducibles[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
+    iso := VerticalJoin(< hom*Matrix([UxV!u : u in Basis(inds[i])]) where _, hom := IsIsomorphic(irreds[charpos[i]], inds[i]) : i in [1..#charpos]>)^-1;
     vprintf GModDec, 4: "Time taken for indecomposables method: %o.\n", Cputime(tt);
     
     M`tensors[i,j] := <S, iso>;
@@ -518,22 +581,24 @@ end function;
 
 function GetS2(M, i)
   t := Cputime();
+  irreds := Irreducibles(M);
+  
   if Type(M`symmetric_squares[i]) eq BoolElt then
     vprint GModDec, 2: "Calculating symmetric square.";
-    S2 := SymmetricSquare(M`irreducibles[i]);
+    S2 := SymmetricSquare(irreds[i]);
   
     if BaseRing(M) eq Rationals() then
       T := RationalCharacterTable(Group(M));
       char := Character(S2);
       S := ChangeUniverse(Decomposition(T, char), Integers());
-      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#M`irreducibles]*}));
+      SS := Sort(MultisetToSequence({* i^^S[i] : i in [1..#irreds]*}));
     else
       dec := Decomposition(S2);
-      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#M`irreducibles] | IsIsomorphic(U, M`irreducibles[i])} : U in dec *}));
-      S := [ Multiplicity(SS,i) : i in [1..#M`irreducibles]];
+      SS := Sort(MultisetToSequence({* i where so := exists(i){i : i in [1..#irreds] | IsIsomorphic(U, irreds[i])} : U in dec *}));
+      S := [ Multiplicity(SS,i) : i in [1..#irreds]];
     end if;
     
-    N := DirectSum([ M`irreducibles[i] : i in SS]);
+    N := DirectSum([ irreds[i] : i in SS]);
     so, iso := IsIsomorphic(S2, N);
     
     assert so;
@@ -564,25 +629,25 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
   end if;
   
   F := BaseRing(M);
-  no_const := #M`irreducibles;
-  
-  irreds_M := {* i^^M`multiplicities[i] : i in [1..no_const]*};
-  irreds_N := {* i^^N`multiplicities[i] : i in [1..no_const]*};
+  no_const := #Irreducibles(M);
 
   // For each homogeneous component, S_i \otimes U_i and T_j \otimes U_j, their tensor product is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
 
   start_pos := [[] : i in [1..no_const]];
   last := [0 : k in [1..no_const]];
 
-  for i in Set(irreds_M), j in Set(irreds_N) do
-    R := GetTensor(M, i, j);
-    start_pos[i,j] := last;
-    last := [ last[k]+Multiplicity(irreds_M, i)*Multiplicity(irreds_M, j)*R[k] : k in [1..no_const]];
+  for i in [1..no_const], j in [1..no_const] do
+    if Multiplicity(M, i) ne 0 and Multiplicity(N, j) ne 0 then
+      R := GetTensor(M, i, j);
+      start_pos[i,j] := last;
+      last := [ last[k]+Multiplicity(M, i)*Multiplicity(M, j)*R[k] : k in [1..no_const]];
+    end if;
   end for;
 
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := F;
+  Mnew`irreducibles := Irreducibles(M);
   
   Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..no_const]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
@@ -599,9 +664,7 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
   bilmaps := [*[**] : i in [1..no_const] *];
   start := [0 : k in [1..no_const]];
   for i in [1..no_const], j in [1..no_const] do
-    mult_i := Multiplicity(irreds_M, i);
-    mult_j := Multiplicity(irreds_N, j);
-    if mult_i eq 0 or mult_j eq 0 then
+    if Multiplicity(M, i) eq 0 or Multiplicity(M, j) eq 0 then
       assert not IsDefined(start_pos[i], j);
     else
       start := start_pos[i,j];
@@ -611,10 +674,10 @@ intrinsic TensorProduct(M::GModDec, N::GModDec) -> GModDec, GModDecBil
     
     injs := [* hom< Im-> Mnew`subspaces[k] |
                               [<Im.l, Mnew`subspaces[k].(l+start[k])> : l in [1..Dimension(Im)]]>
-                      where Im := VectorSpace(F, mult_i*mult_j*mult_R[k])
+                      where Im := VectorSpace(F, Multiplicity(M, i)*Multiplicity(M, j)*mult_R[k])
                       : k in [1..no_const]*];
     
-    bilmaps[i,j] := [* Tensor([*R[k], M`subspaces[i], N`subspaces[j], Mnew`subspaces[k]*],
+    bilmaps[i,j] := [* Tensor([*R[k], Subspace(M, i), Subspace(N, j), Mnew`subspaces[k]*],
                    func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
                       : k in [1..no_const]*];
   end for;
@@ -681,11 +744,11 @@ intrinsic TensorProductOld(M::GModDec, N::GModDec) -> GModDec, SeqEnum
     return sub<M|>, _;
   end if;
   
-  no_const := #M`irreducibles;
+  no_const := #Irreducibles(M);
   
   // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
-  irreds_M := Sort(MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*}));
-  irreds_N := Sort(MultisetToSequence({* i^^N`multiplicities[i] : i in [1..no_const]*}));
+  irreds_M := Sort(MultisetToSequence({* i^^Multiplicity(M, i) : i in [1..no_const]*}));
+  irreds_N := Sort(MultisetToSequence({* i^^Multiplicity(N, i) : i in [1..no_const]*}));
   
   // NB #multiset is #set, so we are running over all irreducibles
   // Can do this better taking into account multiplicities, surely??
@@ -703,8 +766,9 @@ intrinsic TensorProductOld(M::GModDec, N::GModDec) -> GModDec, SeqEnum
   end for;
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   
   Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..no_const]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
@@ -763,39 +827,34 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
   end if;
   
   F := BaseRing(M);
-  no_const := #M`irreducibles;
-  
-  irreds_M := {* i^^M`multiplicities[i] : i in [1..no_const]*};
-  irreds_M_seq := Setseq(IndexedSet(irreds_M));
+  no_const := #Irreducibles(M);
   
   // For each homogeneous component, S_i \otimes U_i and T_j \otimes U_j, their tensor product or symmetric square is \bigotimes_k (S_i \otimes T_j \otimes R_k) \otimes R_k.  We want to know the start position of each S_i \otimes T_j \otimes R_k in the final sum.
   
   start_pos := [[] : i in [1..no_const]];
   last := [0 : k in [1..no_const]];
 
-  for ii in [1..#irreds_M_seq], jj in [ii..#irreds_M_seq] do
-    i := irreds_M_seq[ii];
-    mult_i := Multiplicity(irreds_M, i);
-
-    if ii eq jj then
+  for i in [1..no_const], j in [i..no_const] do
+    if Multiplicity(M, i) eq 0 or Multiplicity(M, j) eq 0 then
+      continue;
+    elif i eq j then
       R2 := GetS2(M, i);
       R := GetTensor(M, i, i);
       
       start_pos[i, i] := last;
-      last := [ last[k]+ mult_i*R2[k] + (mult_i*(mult_i-1) div 2) *R[k] : k in [1..no_const]];
+      last := [ last[k] + Multiplicity(M, i)*R2[k] + 
+                (Multiplicity(M, i)*(Multiplicity(M, i)-1) div 2)*R[k] : k in [1..no_const]];
     else
-      j := irreds_M_seq[jj];
-      mult_j := Multiplicity(irreds_M, j);
-      
       R := GetTensor(M, i, j);
       start_pos[i,j] := last;
-      last := [ last[k]+mult_i*mult_j*R[k] : k in [1..no_const]];
+      last := [ last[k] + Multiplicity(M, i)*Multiplicity(M, j)*R[k] : k in [1..no_const]];
     end if;
   end for;
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := F;
+  Mnew`irreducibles := Irreducibles(M);
   
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
@@ -807,14 +866,13 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
   
   vprint GModDec, 2: "Calculating the isomorphism.";
   tt := Cputime();
+  Msubs := Subspaces(M);
   Cat := TensorCategory([1,1,1,-1], {{3},{2},{1},{0}});
   
   bilmaps := [*[**] : i in [1..no_const] *];
   start := [0 : k in [1..no_const]];
   for i in [1..no_const], j in [i..no_const] do
-    mult_i := Multiplicity(irreds_M, i);
-    mult_j := Multiplicity(irreds_M, j);
-    if mult_i eq 0 or mult_j eq 0 then
+    if Multiplicity(M, i) eq 0 or Multiplicity(M, j) eq 0 then
       assert not IsDefined(start_pos[i], j);
     else
       start := start_pos[i,j];
@@ -833,12 +891,12 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
       // 
       injs := [* *];
       for k in [1..no_const] do
-        Im := VectorSpace(F, mult_i^2*mult_R[k]);
+        Im := VectorSpace(F, Multiplicity(M, i)^2*mult_R[k]);
         pairs := [];
         Mnew_count:= start[k];
         Im_count := 0;
-        for a in [1..Dimension(R[k])], b in [1..mult_i], c in [b..mult_i] do
-          v := TensorProduct(TensorProduct(R[k].a, M`subspaces[i].b), M`subspaces[i].c);
+        for a in [1..Dimension(R[k])], b in [1..Multiplicity(M, i)], c in [b..Multiplicity(M, i)] do
+          v := TensorProduct(TensorProduct(R[k].a, Msubs[i].b), Msubs[i].c);
           if b eq c then
             // This is a symmetric square
             if a le R2[k] then
@@ -851,14 +909,14 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
             // This is a tensor product
             Mnew_count +:= 1;
             Append(~pairs, <v, Mnew`subspaces[k].Mnew_count>);
-            v := TensorProduct(TensorProduct(R[k].a, M`subspaces[i].c), M`subspaces[i].b);
+            v := TensorProduct(TensorProduct(R[k].a, Msubs[i].c), Msubs[i].b);
             Append(~pairs, <v, Mnew`subspaces[k].Mnew_count>);
           end if;
         end for;
         Append(~injs, hom< Im-> Mnew`subspaces[k] | pairs>);
       end for;
       
-      bilmaps[i,i] := [* Tensor([*R[k], M`subspaces[i], M`subspaces[i], Mnew`subspaces[k]*],
+      bilmaps[i,i] := [* Tensor([*R[k], Msubs[i], Msubs[i], Mnew`subspaces[k]*],
                      func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
                         : k in [1..no_const]*];
       
@@ -868,13 +926,13 @@ intrinsic SymmetricSquare(M::GModDec) -> GModDec, GModDecBil
       
       injs := [* hom< Im-> Mnew`subspaces[k] |
                                 [<Im.l, Mnew`subspaces[k].(l+start[k])> : l in [1..Dimension(Im)]]>
-                        where Im := VectorSpace(F, mult_i*mult_j*mult_R[k])
+                        where Im := VectorSpace(F, Multiplicity(M, i)*Multiplicity(M, j)*mult_R[k])
                         : k in [1..no_const]*];
       
-      bilmaps[i,j] := [* Tensor([*R[k], M`subspaces[i], M`subspaces[j], Mnew`subspaces[k]*],
+      bilmaps[i,j] := [* Tensor([*R[k], Msubs[i], Msubs[j], Mnew`subspaces[k]*],
                      func<x | TensorProduct(TensorProduct(x[1],x[2]),x[3])@injs[k]>, Cat)
                         : k in [1..no_const]*];
-      bilmaps[j,i] := [* Tensor([*R[k], M`subspaces[j], M`subspaces[i], Mnew`subspaces[k]*],
+      bilmaps[j,i] := [* Tensor([*R[k], Msubs[j], Msubs[i], Mnew`subspaces[k]*],
                      func<x | TensorProduct(TensorProduct(x[1],x[3]),x[2])@injs[k]>, Cat)
                         : k in [1..no_const]*];
     end if;
@@ -909,10 +967,10 @@ intrinsic SymmetricSquareOld(M::GModDec) -> GModDec, SeqEnum
   vprint GModDec, 2: "Calculating the GModDec tensor product.";
   t := Cputime();  
 
-  no_const := #M`irreducibles;
+  no_const := #Irreducibles(M);
   
   // We form a sequence of the indices of the irreducibles, taking acount of their multiplicities.
-  irreds_M := Sort(MultisetToSequence({* i^^M`multiplicities[i] : i in [1..no_const]*}));
+  irreds_M := Sort(MultisetToSequence({* i^^Multiplicity(M, i) : i in [1..no_const]*}));
   
   poss := [[] : i in [1..#irreds_M]];
   last := [0 : i in [1..no_const]];
@@ -932,8 +990,9 @@ intrinsic SymmetricSquareOld(M::GModDec) -> GModDec, SeqEnum
   end for;
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
@@ -1013,9 +1072,9 @@ function GetRestriction(M, i, H)
   end if;
   if Type(M`restrictions[H]`restrictions[i]) eq BoolElt then
     // We haven't yet calculated this
-    V := Restriction(M`irreducibles[i], H);
+    V := Restriction(Irreducibles(M)[i], H);
     
-    Hirreds := M`restrictions[H]`irreducibles;
+    Hirreds := Irreducibles(M`restrictions[H]);
     _, mults, dec := GetDecomposition(V: irreds := Hirreds);
     
     S := Sort(MultisetToSequence({* i^^mults[i] : i in [1..#Hirreds]*}));
@@ -1060,8 +1119,8 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
   poss := [ ];
   all_irred_mults := [];
   
-  for i in [1..#M`irreducibles] do
-    if  M`multiplicities[i] eq 0 then
+  for i in [1..#Irreducibles(M)] do
+    if  Multiplicity(M, i) eq 0 then
       continue;
     end if;
     
@@ -1070,7 +1129,7 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
     
     if not assigned last then
       // This is the first time through so we initialise variables
-      H_irreds := M`restrictions[H]`irreducibles;
+      H_irreds := Irreducibles(M`restrictions[H]);
       no_H_irreds := #H_irreds;
       last := [ 0 : j in [1..no_H_irreds]];
     end if;
@@ -1081,12 +1140,13 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
   
   Mnew := New(GModDec);
   Mnew`group := H;
+  Mnew`ring := F;
   Mnew`irreducibles := H_irreds;
   Mnew`multiplicities := next;
   Mnew`subspaces := [ VectorSpace(BaseRing(M), d) : d in Mnew`multiplicities ];
   
-  Mnew`tensors := [* [* false : j in [1..#Mnew`irreducibles]*] : i in [1..#Mnew`irreducibles]*];
-  Mnew`symmetric_squares := [* false : j in [1..#Mnew`irreducibles]*];
+  Mnew`tensors := [* [* false : j in [1..#H_irreds]*] : i in [1..#H_irreds]*];
+  Mnew`symmetric_squares := [* false : j in [1..#H_irreds]*];
   Mnew`restrictions := AssociativeArray();
   vprintf GModDec, 4: "Time taken to build the GModDec restriction: %o.\n", Cputime(t);
   
@@ -1098,12 +1158,12 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
   for j in [1..#Mnew`irreducibles] do
     T_j := Mnew`subspaces[j];
     if Dimension(T_j) eq 0 then
-      all_lifts[j] := [* hom< T_j -> S_i | > : S_i in M`subspaces*];
+      all_lifts[j] := [* hom< T_j -> S_i | > : S_i in Subspaces(M)*];
       continue;
     end if;
     lifts := [**];
     for i in [1..#M`irreducibles] do
-      S_i := M`subspaces[i];
+      S_i := Subspaces(M, i);
       if Dimension(S_i) eq 0 then
         lifts[i] := hom< T_j -> S_i | ZeroMatrix(F, Dimension(T_j), Dimension(S_i))>;
       else
@@ -1129,20 +1189,20 @@ intrinsic Restriction(M::GModDec, H::Grp: change_of_basis := false) -> GModDec, 
     We calculate the inverse of each of these and multiply.
     */
     // First get all the CoB matrices
-    CoBs := [* M`multiplicities[i] ne 0 select CoB where _, CoB := GetRestriction(M, i, H) else [] : i in [1..#M`irreducibles]*];
+    Mmults := Multiplicities(M);
+    CoBs := [* Mmults[i] ne 0 select CoB where _, CoB := GetRestriction(M, i, H) else [] : i in [1..#Mmults]*];
 
-    Dinv := DiagonalJoin(< CoBs[i] : j in [1..M`multiplicities[i]], i in [1..#M`irreducibles]>);
+    Dinv := DiagonalJoin(< CoBs[i] : j in [1..Mmults[i]], i in [1..Mmults]>);
     
-    Hhomblocks := [ i eq 1 select 0 else Self(i-1) + Dimension(Mnew`irreducibles[i-1])*Mnew`multiplicities[i-1] : i in [1..#Mnew`irreducibles]];
+    Hhomblocks := [ i eq 1 select 0 else Self(i-1) + Dimension(Irreducibles(Mnew)[i-1])*Multiplicity(Mnew, i-1) : i in [1..#Irreducibles(Mnew)]];
     
     perm := [];
-    for i in [1..#M`irreducibles] do
-      d := M`multiplicities[i];
-      if d eq 0 then
+    for i in [1..Mmults] do
+      if Mmults[i] eq 0 then
         continue;
       end if;
       mults := all_irred_mults[i];
-      for k in [1..d] do
+      for k in [1..Mmults[i]] do
         for j in [j : j in [1..#mults] | mults[j] ne 0] do
           perm cat:= [ l eq 1 select Hhomblocks[j] + ((k-1)*mults[j] + poss[i,j,1])*Dimension(H_irreds[j])+1 else Self(l-1)+1 : l in [1..mults[j]*Dimension(H_irreds[j])]];
         end for;
@@ -1163,7 +1223,8 @@ intrinsic LiftModule(M::GModDec, lifts::Rec) -> GModDec
   }
   require M subset lifts`domain: "The module given is not in the domain of the lift.";
   N := lifts`image;
-  return sub< N | [ &+[ M`subspaces[j]@lifts`lifts[j,i] : j in [1..#M`irreducibles]] : i in [1..#N`irreducibles]]>;
+  Msubs := Subspaces(M);
+  return sub< N | [ &+[ Msubs[j]@lifts`lifts[j,i] : j in [1..#Msubs]] : i in [1..#Irreducibles(N)]]>;
 end intrinsic;
 
 intrinsic ChangeField(M::GModDec, F::Fld) -> GModDec
@@ -1199,14 +1260,15 @@ intrinsic Generic(M::GModDec) -> GModDec
   The module which contains M as a submodule.
   }
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
   Mnew`tensors := M`tensors;
   Mnew`symmetric_squares := M`symmetric_squares;
   Mnew`restrictions := M`restrictions;
   
-  Mnew`subspaces := [ Generic(V) : V in M`subspaces ];
-  Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
+  Mnew`subspaces := [ Generic(V) : V in Subspaces(M) ];
+  Mnew`multiplicities := [ Dimension(V) : V in Subspaces(Mnew)];
   
   return Mnew;
 end intrinsic;
@@ -1215,10 +1277,10 @@ intrinsic 'eq'(M::GModDec, N::GModDec) -> BoolElt
   {
   Equality of two submodules M and N.
   }
-  require M`group eq N`group and BaseRing(M) eq BaseRing(N): "There is no covering module.";
-  assert #M`irreducibles eq # N`irreducibles;
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "There is no covering module.";
+  assert #Irreducibles(M) eq #Irreducibles(N);
   
-  return forall{ i : i in [1..#M`irreducibles] | M`subspaces[i] eq N`subspaces[i]};
+  return Subspaces(M) eq Subspaces(N);
 end intrinsic;
 
 intrinsic IsIsomorphic(M::GModDec, N::GModDec) -> BoolElt, Map
@@ -1233,27 +1295,28 @@ intrinsic 'subset'(N::GModDec, M::GModDec) -> BoolElt
   {
   Whether N is a submodule of M.
   }
-  require M`group eq N`group and BaseRing(M) eq BaseRing(N): "There is no covering module.";
-  assert #M`irreducibles eq # N`irreducibles;
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "There is no covering module.";
+  assert #Irreducibles(M) eq #Irreducibles(N);
   
-  return forall{ i : i in [1..#N`irreducibles] | N`subspaces[i] subset M`subspaces[i]};
+  return forall{ i : i in [1..#Irreducibles(N)] | Subspace(N, i) subset Subspace(M, i)};
 end intrinsic;
 
 intrinsic '+'(M::GModDec, N::GModDec) -> GModDec
   {
   The sum of the two submodules M and N.
   }
-  require M`group eq N`group and BaseRing(M) eq BaseRing(N): "There is no covering module.";
-  assert #M`irreducibles eq # N`irreducibles;
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "There is no covering module.";
+  assert #Irreducibles(M) eq #Irreducibles(N);
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#Irreducibles(M)]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
   Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
-  Mnew`subspaces := [ M`subspaces[i] + N`subspaces[i] : i in [1..#M`irreducibles]];
+  Mnew`subspaces := [ M`subspaces[i] + N`subspaces[i] : i in [1..#Irreducibles(M)]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
   return Mnew;
@@ -1263,17 +1326,18 @@ intrinsic 'meet'(M::GModDec, N::GModDec) -> GModDec
   {
   The intersection of two submodules M and N.
   }
-  require M`group eq N`group and BaseRing(M) eq BaseRing(N): "There is no covering module.";
-  assert #M`irreducibles eq # N`irreducibles;
+  require Group(M) eq Group(N) and BaseRing(M) eq BaseRing(N): "There is no covering module.";
+  assert #Irreducibles(M) eq #Irreducibles(N);
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#Irreducibles(M)]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
   Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
-  Mnew`subspaces := [ M`subspaces[i] meet N`subspaces[i] : i in [1..#M`irreducibles]];
+  Mnew`subspaces := [ M`subspaces[i] meet N`subspaces[i] : i in [1..#Irreducibles(M)]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
   return Mnew;
@@ -1286,13 +1350,14 @@ intrinsic Complement(M::GModDec, N::GModDec) -> GModDec
   require N subset M: "N is not a submodule of M.";
   
   Mnew := New(GModDec);
-  Mnew`group := M`group;
-  Mnew`irreducibles := M`irreducibles;
-  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#M`irreducibles]*];
+  Mnew`group := Group(M);
+  Mnew`ring := BaseRing(M);
+  Mnew`irreducibles := Irreducibles(M);
+  Mnew`tensors := [* Merge([*M`tensors[i], N`tensors[i]*]) : i in [1..#Irreducibles(M)]*];
   Mnew`symmetric_squares := Merge([* M`symmetric_squares, N`symmetric_squares*]);
   Mnew`restrictions := MergeAssoc([* M`restrictions, N`restrictions*]);
   
-  Mnew`subspaces := [ Complement(M`subspaces[i], N`subspaces[i]) : i in [1..#M`irreducibles]];
+  Mnew`subspaces := [ Complement(Subspace(M, i), Subspace(N, i)) : i in [1..#Irreducibles(M)]];
   Mnew`multiplicities := [ Dimension(V) : V in Mnew`subspaces];
   
   return Mnew;
@@ -1306,7 +1371,7 @@ intrinsic GModule(M::GModDec) -> ModGrp
   {
   The magma G-module given by M.
   }
-  return DirectSum(Flat([ [ M`irreducibles[i] : j in [1..M`multiplicities[i]]] : i in [1..#M`irreducibles]]));
+  return DirectSum(Flat([ [ Irreducibles(M)[i] : j in [1..Multiplicity(M, i)]] : i in [1..#Irreducibles(M)]]));
 end intrinsic;
 
 intrinsic VectorSpace(M::GModDec) -> ModTupRng
@@ -1338,7 +1403,7 @@ intrinsic 'eq'(x::GModDecElt, y::GModDecElt) -> BoolElt
   {
   Equality of elements.
   }
-  require x`parent eq y`parent: "The two elements are not in the same module.";
+  require Parent(x) eq Parent(y): "The two elements are not in the same module.";
   return x`elt eq y`elt;
 end intrinsic;
 
@@ -1346,10 +1411,10 @@ intrinsic 'in'(x::GModDecElt, M::GModDec) -> BoolElt
   {
   Returns whether x is in M.
   }
-  if x`parent eq M then
+  if Parent(x) eq M then
     return true;
   else
-    return sub<x`parent|x> subset M;
+    return sub<Parent(x)|x> subset M;
   end if;
 end intrinsic;
 
@@ -1357,7 +1422,7 @@ intrinsic Hash(x::GModDecElt) -> RngIntElt
   {
   Returns the hash value of x.
   }
-  return Hash(<Group(x`parent), x`elt>);
+  return Hash(<Parent(x), x`elt>);
 end intrinsic;
 
 intrinsic Eltseq(x::GModDecElt) -> SeqEnum
@@ -1394,22 +1459,22 @@ intrinsic IsCoercible(M::GModDec, x::.) -> BoolElt, GModDecElt
   }
   if Type(x) eq GModDecElt and x in Generic(M) then
     return true, CreateElement(M, x`elt);
-  elif Type(x) eq List and #x eq #M`irreducibles and
+  elif Type(x) eq List and #x eq #Irreducibles(M) and
       forall{ x[i] : i in [1..#x] |
          ISA(Type(x[i]), Mtrx) and
-         NumberOfColumns(x[i]) eq Dimension(M`irreducibles[i]) and
-         NumberOfRows(x[i]) eq OverDimension(M`subspaces[i])}
+         NumberOfColumns(x[i]) eq Dimension(Irreducibles(M)[i]) and
+         NumberOfRows(x[i]) eq OverDimension(Subspace(M, i))}
    then
     return true, CreateElement(M, x);
   elif (Type(x) eq SeqEnum and #x eq OverDimension(M)) or
      (Type(x) eq ModTupFldElt and Degree(x) eq OverDimension(M)) or
      (Type(x) eq ModGrpElt and Dimension(Parent(x)) eq OverDimension(M)) then
      Mbig := Generic(M);
-    seq := Partition([1..Dimension(Mbig)], [ Mbig`multiplicities[i]*Dimension(Mbig`irreducibles[i]) : i in [1..#Mbig`multiplicities]]);
+    seq := Partition([1..Dimension(Mbig)], [ Multiplicity(Mbig, i)*Dimension(Irreducibles(Mbig)[i]) : i in [1..#Irreducibles(Mbig)]]);
     if Type(x) in {ModTupFldElt, ModGrpElt} then
       x := Eltseq(x);
     end if;
-    xx := [* Matrix(BaseRing(M), Mbig`multiplicities[i], Dimension(Mbig`irreducibles[i]), x[seq[i]]) : i in [1..#seq]*];
+    xx := [* Matrix(BaseRing(M), Multiplicity(Mbig, i), Dimension(Irreducibles(Mbig)[i]), x[seq[i]]) : i in [1..#seq]*];
     return true, CreateElement(M, xx);
     // Should also do for if the vectors have dim Dim(M)
   else
@@ -1421,7 +1486,7 @@ intrinsic Zero(M::GModDec) -> GModDecElt
   {
   Returns the zero element of M.
   }
-  return CreateElement(M, [* ZeroMatrix(BaseRing(M), OverDimension(M`subspaces[i]), Dimension(M`irreducibles[i])) : i in [1..#M`irreducibles]*]);
+  return CreateElement(M, [* ZeroMatrix(BaseRing(M), OverDimension(Subspace(M, i)), Dimension(Irreducibles(M)[i])) : i in [1..#Irreducibles(M)]*]);
 end intrinsic;
 
 intrinsic Basis(M::GModDec) -> SeqEnum
@@ -1437,9 +1502,9 @@ intrinsic '.'(M::GModDec, i::RngIntElt) -> GModDecElt
   The ith basis element of the module.
   }
   require IsCoercible(Integers(), i) and 1 le i and i le Dimension(M): "This is not a valid index.";
-  dims := [Dimension(M`irreducibles[j]) : j in [1..#M`irreducibles]];
-  homcomps := [ M`multiplicities[j]*dims[j] : j in [1..#M`irreducibles]];
-  pos := [ j eq 1 select homcomps[1] else Self(j-1)+homcomps[j] : j in [1..#M`irreducibles]];
+  dims := [Dimension(Irreducibles(M)[j]) : j in [1..#Irreducibles(M)]];
+  homcomps := [ Multiplicity(M, j)*dims[j] : j in [1..#Irreducibles(M)]];
+  pos := [ j eq 1 select homcomps[1] else Self(j-1)+homcomps[j] : j in [1..#Irreducibles(M)]];
   
   j := Minimum({ j : j in [1..#pos] | i le pos[j]});
   
@@ -1453,7 +1518,7 @@ intrinsic '.'(M::GModDec, i::RngIntElt) -> GModDecElt
   ipos := (ii-1) div dims[j];
   jpos := ii-ipos*dims[j];
   x := Zero(M);
-  InsertBlock(~x`elt[j], Transpose(Matrix(BasisElement(M`subspaces[j],ipos+1))), 1, jpos);
+  InsertBlock(~x`elt[j], Transpose(Matrix(BasisElement(Subspace(M, j),ipos+1))), 1, jpos);
   
   return x;
 end intrinsic;
@@ -1525,7 +1590,8 @@ intrinsic '*'(x::GModDecElt, g::GrpElt) -> GModDecElt
   M := Parent(x);
   require g in Group(M): "g is not a member of the group which acts on the module containing x.";
   // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
-  return CreateElement(M, [* x`elt[i]*(g@GModuleAction(M`irreducibles[i])) : i in [1..#x`elt] *]);
+  return CreateElement(M, [* IsZero(x`elt[i]) select x`elt[i]
+                else x`elt[i]*(g@GModuleAction(Irreducibles(M)[i])) : i in [1..#x`elt] *]);
 end intrinsic;
 
 intrinsic '*'(X::SeqEnum[GModDecElt], g::GrpElt) -> SeqEnum
@@ -1539,13 +1605,15 @@ intrinsic '*'(X::SeqEnum[GModDecElt], g::GrpElt) -> SeqEnum
   M := Parent(X[1]);
   require g in Group(M): "g is not a member of the group which acts on the module containing elements of X.";
   // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
-  mats := [* VerticalJoin(<x`elt[i] : x in X>)*(g@GModuleAction(M`irreducibles[i])) : i in [1..#M`irreducibles] *];
-  mults := [ M`multiplicities[i] : i in [1..#M`irreducibles]];
+  mults := Multiplicities(M);
+  mats := [* IsZero(mat) select mat
+               else mat*(g@GModuleAction(Irreducibles(M)[i]))
+               where mat := VerticalJoin(<x`elt[i] : x in X>) : i in [1..#mults] *];
   
-  return [ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#M`irreducibles]*]) : j in [1..#X]];
+  return [ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#mults]*]) : j in [1..#X]];
 end intrinsic;
 
-intrinsic '*'(X::SetIndx[GModDecElt], g::GrpElt) -> SeqEnum
+intrinsic '*'(X::SetIndx[GModDecElt], g::GrpElt) -> SetIndx
   {
   The image of the elements of X under the action of g.
   }
@@ -1556,8 +1624,10 @@ intrinsic '*'(X::SetIndx[GModDecElt], g::GrpElt) -> SeqEnum
   M := Parent(X[1]);
   require g in Group(M): "g is not a member of the group which acts on the module containing elements of X.";
   // This is probably quicker than coercing each row into U, doing u*g and then reforming a matrix.  Especially as the number of rows grows.
-  mats := [* VerticalJoin(<X[j]`elt[i] : j in [1..#X]>) *(g@GModuleAction(M`irreducibles[i])) : i in [1..#M`irreducibles] *];
-  mults := [ M`multiplicities[i] : i in [1..#M`irreducibles]];
+  mults := Multiplicities(M);
+  mats := [* IsZero(mat) select mat
+               else mat*(g@GModuleAction(Irreducibles(M)[i]))
+               where mat := VerticalJoin(<x`elt[i] : x in X>) : i in [1..#mults] *];
   
-  return {@ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#M`irreducibles]*]) : j in [1..#X]@};
+  return {@ CreateElement(M, [* RowSubmatrix(mats[i],[(j-1)*mults[i] +1..j*mults[i]]) : i in [1..#mults]*]) : j in [1..#X]@};
 end intrinsic;
